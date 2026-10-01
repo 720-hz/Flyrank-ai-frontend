@@ -55,9 +55,20 @@ export function readActivityLog(): ActivityEntry[] {
  * most-recent-first array. Intended to be called by other features when
  * something worth logging happens (e.g. saving settings) — this module
  * doesn't wire up any callers itself.
+ *
+ * A blank (or whitespace-only) `message` is a no-op: it returns the
+ * existing log unchanged rather than persisting an empty entry. Manual
+ * correction after review — the original version stored whatever it was
+ * given, so a careless caller (e.g. `appendActivityEntry("")`) would have
+ * silently added a blank row to the log with no way to tell what happened.
  */
 export function appendActivityEntry(message: string): ActivityEntry[] {
+  const trimmedMessage = message.trim();
   const existing = readActivityLog();
+
+  if (!trimmedMessage) {
+    return existing;
+  }
 
   let id: string;
   try {
@@ -71,7 +82,7 @@ export function appendActivityEntry(message: string): ActivityEntry[] {
 
   const entry: ActivityEntry = {
     id,
-    message,
+    message: trimmedMessage,
     timestamp: new Date().toISOString(),
   };
 

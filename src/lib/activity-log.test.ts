@@ -43,6 +43,14 @@ describe("activity-log", () => {
     }
   });
 
+  it("treats a blank or whitespace-only message as a no-op", () => {
+    appendActivityEntry("real event");
+    const afterBlank = appendActivityEntry("   ");
+
+    expect(afterBlank.map((entry) => entry.message)).toEqual(["real event"]);
+    expect(readActivityLog()).toHaveLength(1);
+  });
+
   it("caps the stored log at the 20 most recent entries, dropping the oldest", () => {
     for (let i = 1; i <= 25; i += 1) {
       appendActivityEntry(`event ${i}`);
