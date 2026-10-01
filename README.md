@@ -7,7 +7,7 @@ the heavy lifting, under human direction and review.
 ## Status
 
 🚧 **Setup phase.** The actual product this repo will become hasn't been scoped yet — that
-comes in a later assignment. Right now this is just the environment, tooling, and repo
+comes in a later assignment. Right now this is a scaffolded Next.js app plus the repo
 conventions the rest of the track will build on.
 
 ## Stack (starting point, subject to change once the project is scoped)
@@ -25,20 +25,17 @@ conventions the rest of the track will build on.
 
 ## Getting started
 
-> **Nothing to run yet.** The app hasn't been scaffolded, so there's no `package.json` —
-> `npm install` / `npm run dev` won't work until a later assignment adds it.
-
 **Prerequisites**
 
 - [Node.js](https://nodejs.org/) (current LTS) and npm
 - Git
 - [Claude Code](https://code.claude.com/) (optional, but it's how this project is built)
 
-**Clone the repo**
-
 ```bash
 git clone https://github.com/720-hz/flyrank-frontend-capstone.git
 cd flyrank-frontend-capstone
+npm install
+npm run dev
 ```
 
-Install/run instructions will be added here once the project is scaffolded.
+Then open [http://localhost:3000](http://localhost:3000).
