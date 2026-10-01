@@ -25,9 +25,20 @@ conventions the rest of the track will build on.
 
 ## Getting started
 
+> **Nothing to run yet.** The app hasn't been scaffolded, so there's no `package.json` —
+> `npm install` / `npm run dev` won't work until a later assignment adds it.
+
+**Prerequisites**
+
+- [Node.js](https://nodejs.org/) (current LTS) and npm
+- Git
+- [Claude Code](https://code.claude.com/) (optional, but it's how this project is built)
+
+**Clone the repo**
+
 ```bash
-npm install
-npm run dev
+git clone https://github.com/720-hz/flyrank-frontend-capstone.git
+cd flyrank-frontend-capstone
 ```
 
-(Placeholder — will be filled in once the project is actually scaffolded in a later assignment.)
+Install/run instructions will be added here once the project is scaffolded.
