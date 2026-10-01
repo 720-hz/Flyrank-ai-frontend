@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Home() {
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-24 text-center">
@@ -8,6 +10,12 @@ export default function Home() {
         Scaffolding is in place. The product this app becomes is scoped in a
         later assignment.
       </p>
+      <Link
+        href="/settings"
+        className="text-sm font-medium text-main underline-offset-4 hover:underline"
+      >
+        Go to settings
+      </Link>
     </main>
   );
 }
