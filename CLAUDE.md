@@ -28,6 +28,13 @@ should be updated once the real project is defined in a later assignment.
   styles/tests next to it rather than in a separate parallel tree.
 - **No secrets in git:** anything sensitive goes in `.env.local` (gitignored), never committed.
 
+## Environment notes
+
+- **Fonts:** `next/font/google` cannot reach `fonts.googleapis.com` in sandboxed build
+  environments (agent/CI sandboxes often block it). Declare brand fonts (Space Grotesk /
+  Inter per the project instructions) as plain CSS font-family stacks with system-font
+  fallback instead, or self-host via `next/font/local` if the woff2 files are vendored in.
+
 ## Working style
 
 - Make small, reviewable changes — prefer several focused commits over one large one.
