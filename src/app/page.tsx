@@ -11,10 +11,10 @@ export default function Home() {
         later assignment.
       </p>
       <Link
-        href="/settings"
+        href="/account"
         className="text-sm font-medium text-main underline underline-offset-2"
       >
-        Settings
+        Account
       </Link>
     </main>
   );
