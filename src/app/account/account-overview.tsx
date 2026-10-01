@@ -85,10 +85,10 @@ function subscribeToNothing(): () => void {
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-1 rounded-md border border-main/15 px-4 py-3">
-      <span className="text-xs font-medium uppercase tracking-wide text-text/60">
+      <dt className="text-xs font-medium uppercase tracking-wide text-text/60">
         {label}
-      </span>
-      <span className="text-sm font-medium text-text">{value}</span>
+      </dt>
+      <dd className="text-sm font-medium text-text">{value}</dd>
     </div>
   );
 }
@@ -120,7 +120,7 @@ export function AccountOverview() {
   }
 
   return (
-    <div className="grid w-full max-w-md grid-cols-1 gap-3 sm:grid-cols-2">
+    <dl className="grid w-full max-w-md grid-cols-1 gap-3 sm:grid-cols-2">
       <SummaryCard
         label="Display name"
         value={summary.displayName || "Not set yet"}
@@ -135,6 +135,6 @@ export function AccountOverview() {
         label="Product updates"
         value={summary.productUpdates ? "On" : "Off"}
       />
-    </div>
+    </dl>
   );
 }
