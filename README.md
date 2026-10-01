@@ -1,4 +1,4 @@
-# FlyRank Frontend Capstone
+# Environment and AI toolchain
 
 Capstone project for the FlyRank "Frontend Development with AI" track — 14 assignments,
 building a production-style frontend with an AI coding assistant (Claude Code) doing most of
