@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { appendActivityEntry } from "@/lib/activity-log";
 
 const THEME_OPTIONS = ["light", "dark", "system"] as const;
 
@@ -77,6 +78,37 @@ function clearPersistedSettings(): void {
   }
 }
 
+/**
+ * Builds a human-readable summary of what changed, for the activity log.
+ * `previous` is whatever was persisted before this save (null on the very
+ * first save). Connects the Settings screen to Activity: this is the only
+ * place anything gets written to the activity log from this form.
+ */
+function describeSettingsChange(
+  previous: SettingsFormValues | null,
+  next: SettingsFormValues,
+): string {
+  if (!previous) return "Set up account settings";
+
+  const changed: string[] = [];
+  if (previous.displayName !== next.displayName) changed.push("display name");
+  if (previous.email !== next.email) changed.push("email");
+  if (previous.theme !== next.theme) {
+    changed.push(`theme to ${THEME_LABELS[next.theme]}`);
+  }
+  if (previous.emailNotifications !== next.emailNotifications) {
+    changed.push(
+      `email notifications ${next.emailNotifications ? "on" : "off"}`,
+    );
+  }
+  if (previous.productUpdates !== next.productUpdates) {
+    changed.push(`product updates ${next.productUpdates ? "on" : "off"}`);
+  }
+
+  if (changed.length === 0) return "Saved settings (no changes)";
+  return `Updated ${changed.join(", ")}`;
+}
+
 export function SettingsForm() {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const {
@@ -105,14 +137,20 @@ export function SettingsForm() {
 
   const onSubmit = async (values: SettingsFormValues) => {
     setShowConfirmation(false);
+    const previous = readPersistedSettings();
     await persistSettings(values);
+    appendActivityEntry(describeSettingsChange(previous, values));
     setShowConfirmation(true);
   };
 
   const handleResetToDefaults = () => {
+    const hadPersistedSettings = readPersistedSettings() !== null;
     clearPersistedSettings();
     reset(DEFAULT_SETTINGS);
     setShowConfirmation(false);
+    if (hadPersistedSettings) {
+      appendActivityEntry("Reset settings to defaults");
+    }
   };
 
   return (

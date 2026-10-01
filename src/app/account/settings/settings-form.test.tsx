@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsForm } from "./settings-form";
+import { readActivityLog } from "@/lib/activity-log";
 
 const STORAGE_KEY = "flyrank:settings";
 
@@ -13,6 +14,34 @@ describe("SettingsForm", () => {
   afterEach(() => {
     window.localStorage.clear();
     vi.restoreAllMocks();
+  });
+
+  it("logs a new-setup activity entry on the first successful save", async () => {
+    const user = userEvent.setup();
+    render(<SettingsForm />);
+
+    await user.type(screen.getByLabelText(/display name/i), "Ada Lovelace");
+    await user.type(screen.getByLabelText(/^email$/i), "ada@example.com");
+    await user.tab();
+
+    const saveButton = await screen.findByRole("button", { name: /save settings/i });
+    await waitFor(() => expect(saveButton).toBeEnabled());
+    await user.click(saveButton);
+
+    await screen.findByRole("status");
+    const log = readActivityLog();
+    expect(log).toHaveLength(1);
+    expect(log[0].message).toBe("Set up account settings");
+  });
+
+  it("does not log an activity entry when reset is clicked with nothing persisted yet", async () => {
+    const user = userEvent.setup();
+    render(<SettingsForm />);
+
+    await user.type(screen.getByLabelText(/display name/i), "Someone");
+    await user.click(screen.getByRole("button", { name: /reset to defaults/i }));
+
+    expect(readActivityLog()).toHaveLength(0);
   });
 
   it("shows a required error and does not persist when display name is empty", async () => {
@@ -89,5 +118,28 @@ describe("SettingsForm", () => {
 
     expect(nameInput.value).toBe("");
     expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it("logs an activity entry on reset when settings had been saved", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        displayName: "Ada Lovelace",
+        email: "ada@example.com",
+        theme: "system",
+        emailNotifications: true,
+        productUpdates: false,
+      }),
+    );
+    const user = userEvent.setup();
+    render(<SettingsForm />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /reset to defaults/i }),
+    );
+
+    const log = readActivityLog();
+    expect(log).toHaveLength(1);
+    expect(log[0].message).toBe("Reset settings to defaults");
   });
 });
