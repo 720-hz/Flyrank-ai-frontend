@@ -35,6 +35,30 @@ should be updated once the real project is defined in a later assignment.
   Inter per the project instructions) as plain CSS font-family stacks with system-font
   fallback instead, or self-host via `next/font/local` if the woff2 files are vendored in.
 
+## Rules learned (FE-02 drill)
+
+Learned by diffing a vague-prompt build against a precise-prompt build of the same settings
+form — see `WORKFLOW.md` for the full comparison.
+
+- **Forms use `react-hook-form` + `zod` (via `@hookform/resolvers/zod`), never hand-rolled
+  validation state.** A `<form noValidate>` with no resolver wired to it is worse than no
+  `noValidate` at all — it silently disables the browser's native checks and replaces them
+  with nothing. (Round 1 of the drill shipped exactly this: empty name / malformed email
+  submitted successfully with zero errors shown.) A review should fail any form where
+  `noValidate` appears without a matching schema/resolver next to it.
+- **Every input with a possible invalid state wires `aria-invalid` and `aria-describedby` to
+  its error message, with the error rendered via an element the `aria-describedby` id
+  actually points at.** Color or position alone doesn't count — a screen reader needs the
+  association. `fieldset`/`legend` for grouped radios/checkboxes and `label htmlFor`/`id` for
+  everything else are already covered by the "Components" rule below; this rule is specifically
+  about the error-state wiring, which is easy to skip under a vague prompt because nothing
+  prompted for it.
+- **A component with non-trivial state logic (validation, async submission, persistence) ships
+  with a colocated `*.test.tsx`, and `npm run test:run` is actually run — not just written —
+  before the work is called done.** Round 1 had no tests and its central bug (see above) only
+  surfaced on a manual line-by-line read; round 2's bugs would have shown up as a red test
+  instead of requiring that read.
+
 ## Working style
 
 - Make small, reviewable changes — prefer several focused commits over one large one.
