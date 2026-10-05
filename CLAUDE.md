@@ -34,6 +34,11 @@ should be updated once the real project is defined in a later assignment.
   environments (agent/CI sandboxes often block it). Declare brand fonts (Space Grotesk /
   Inter per the project instructions) as plain CSS font-family stacks with system-font
   fallback instead, or self-host via `next/font/local` if the woff2 files are vendored in.
+- **shadcn/ui CLI:** `npx shadcn add ...` cannot reach `ui.shadcn.com` in sandboxed build
+  environments for the same reason as the fonts block above. `npm`'s registry is fine, so
+  install the underlying `@radix-ui/react-*` packages directly and hand-write the
+  `src/components/ui/*.tsx` wrapper files to match shadcn's current default source instead
+  of relying on the CLI to fetch them. See `playground/NOTES.md` for a worked example.
 
 ## Working style
 
