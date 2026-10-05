@@ -3,6 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import {
+  Fragment,
   useEffect,
   useMemo,
   useRef,
@@ -11,7 +12,9 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { Streamdown } from "streamdown";
+import { isToolPart, type ConsoleUIMessage } from "@/lib/ai/console-ui-message";
 import { getMessageText } from "@/lib/ai/ui-message-text";
+import { ToolPart } from "./tool-parts";
 
 export interface AgentChatProps {
   agentId: string;
@@ -23,11 +26,11 @@ const BOTTOM_THRESHOLD_PX = 48;
 
 export function AgentChat({ agentId, agentName }: AgentChatProps) {
   const transport = useMemo(
-    () => new DefaultChatTransport({ api: `/api/agents/${agentId}/chat` }),
+    () => new DefaultChatTransport<ConsoleUIMessage>({ api: `/api/agents/${agentId}/chat` }),
     [agentId],
   );
 
-  const { messages, sendMessage, stop, status, error } = useChat({ transport });
+  const { messages, sendMessage, stop, status, error } = useChat<ConsoleUIMessage>({ transport });
 
   const [input, setInput] = useState("");
   const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
@@ -37,11 +40,16 @@ export function AgentChat({ agentId, agentName }: AgentChatProps) {
   const isBusy = status === "submitted" || status === "streaming";
 
   const lastMessage = messages[messages.length - 1];
+  const lastMessageHasToolPart = lastMessage?.parts.some(isToolPart) ?? false;
+  // Once a tool part has started arriving, its own input-streaming card is the
+  // "something is happening" signal — the generic thinking-dots indicator would
+  // be redundant (and would sit above an empty bubble with nothing in it).
   const isWaitingForFirstToken =
     status === "submitted" ||
     (status === "streaming" &&
       lastMessage?.role === "assistant" &&
-      getMessageText(lastMessage).length === 0);
+      getMessageText(lastMessage).length === 0 &&
+      !lastMessageHasToolPart);
 
   // Auto-scroll: only follow new content while already pinned to the bottom. The
   // moment the user scrolls up, release the pin so streaming text doesn't yank
@@ -112,27 +120,34 @@ export function AgentChat({ agentId, agentName }: AgentChatProps) {
           {messages.map((message) => {
             const text = getMessageText(message);
             const isUser = message.role === "user";
+            const toolParts = message.parts.filter(isToolPart);
+
             return (
-              <li
-                key={message.id}
-                className={`flex animate-in fade-in slide-in-from-bottom-1 duration-200 ${
-                  isUser ? "justify-end" : "justify-start"
-                }`}
-              >
-                <div
-                  className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
-                    isUser
-                      ? "bg-main text-background"
-                      : "border border-main/10 bg-background text-text"
-                  }`}
-                >
-                  {isUser ? (
-                    <p className="whitespace-pre-wrap">{text}</p>
-                  ) : text.length > 0 ? (
-                    <Streamdown>{text}</Streamdown>
-                  ) : null}
-                </div>
-              </li>
+              <Fragment key={message.id}>
+                {(isUser || text.length > 0) && (
+                  <li
+                    className={`flex animate-in fade-in slide-in-from-bottom-1 duration-200 ${
+                      isUser ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    <div
+                      className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                        isUser
+                          ? "bg-main text-background"
+                          : "border border-main/10 bg-background text-text"
+                      }`}
+                    >
+                      {isUser ? <p className="whitespace-pre-wrap">{text}</p> : <Streamdown>{text}</Streamdown>}
+                    </div>
+                  </li>
+                )}
+
+                {toolParts.map((part) => (
+                  <li key={part.toolCallId} className="flex justify-start">
+                    <ToolPart part={part} />
+                  </li>
+                ))}
+              </Fragment>
             );
           })}
 

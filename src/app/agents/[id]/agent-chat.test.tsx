@@ -24,6 +24,16 @@ function textMessage(id: string, role: "user" | "assistant", text: string): UIMe
   return { id, role, parts: text ? [{ type: "text", text }] : [] };
 }
 
+function toolMessage(id: string, part: Record<string, unknown>): UIMessage {
+  return {
+    id,
+    role: "assistant",
+    parts: [
+      { type: "tool-scoreIncidentSeverity", toolCallId: "call-1", ...part } as unknown as UIMessage["parts"][number],
+    ],
+  };
+}
+
 const sendMessage = vi.fn();
 const stop = vi.fn();
 
@@ -170,6 +180,42 @@ describe("AgentChat", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("The agent failed to respond. Please try again.");
     expect(screen.getByRole("textbox", { name: "Message PR Reviewer" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+  });
+
+  it("renders a tool part's severity card alongside the message list", () => {
+    mockChat({
+      messages: [
+        textMessage("u1", "user", "Checkout was down for everyone for an hour"),
+        toolMessage("a1", {
+          state: "output-available",
+          input: { impactSummary: "Checkout was down for everyone for an hour" },
+          output: {
+            level: "SEV2",
+            score: 65,
+            factors: [{ label: "Affected users", points: 55, detail: 'Estimated "most" of users impacted.' }],
+            recommendation: "Notify the on-call lead.",
+          },
+        }),
+      ],
+      status: "ready",
+    });
+    render(<AgentChat agentId="incident-summarizer" agentName="Incident Summarizer" />);
+
+    expect(screen.getByRole("status", { name: /Incident severity: SEV2/ })).toBeInTheDocument();
+  });
+
+  it("suppresses the generic thinking indicator once a tool part has started streaming", () => {
+    mockChat({
+      messages: [
+        textMessage("u1", "user", "Checkout was down"),
+        toolMessage("a1", { state: "input-streaming", input: { impactSummary: "Checkout was down" } }),
+      ],
+      status: "streaming",
+    });
+    render(<AgentChat agentId="incident-summarizer" agentName="Incident Summarizer" />);
+
+    expect(screen.queryByRole("status", { name: "Incident Summarizer is thinking" })).not.toBeInTheDocument();
+    expect(screen.getByText("Reading incident details…")).toBeInTheDocument();
   });
 
   it("shows a jump-to-latest control once the user scrolls away from the bottom", () => {
