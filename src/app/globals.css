@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "streamdown/styles.css";
 
 :root {
   --color-main: #2b2e6b;
@@ -29,4 +31,18 @@ h4,
 h5,
 h6 {
   font-family: var(--font-heading);
+}
+
+/* Respect "Reduce motion" system-wide: tw-animate-css's animate-in utilities (used for the
+   shadcn dialog's open/close transitions and the chat's message/indicator handoff) collapse
+   to effectively instant rather than being disabled piecemeal per component. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
