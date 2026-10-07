@@ -11,10 +11,21 @@ vi.mock("ai", () => ({
 vi.mock("@/lib/ai/config", () => ({
   chatModel: "mock-model",
   CHAT_GENERATION_SETTINGS: { temperature: 0.4, maxOutputTokens: 1024 },
-  getAgentById: (id: string) =>
-    id === "pr-reviewer"
-      ? { id: "pr-reviewer", name: "PR Reviewer", description: "...", systemPrompt: "You are the PR Reviewer." }
-      : undefined,
+  getAgentById: (id: string) => {
+    if (id === "pr-reviewer") {
+      return { id: "pr-reviewer", name: "PR Reviewer", description: "...", systemPrompt: "You are the PR Reviewer." };
+    }
+    if (id === "incident-summarizer") {
+      return {
+        id: "incident-summarizer",
+        name: "Incident Summarizer",
+        description: "...",
+        systemPrompt: "You are the Incident Summarizer.",
+      };
+    }
+    return undefined;
+  },
+  getAgentTools: (id: string) => (id === "incident-summarizer" ? { "mock-tool": {} } : undefined),
 }));
 
 import { POST } from "./route";
@@ -91,5 +102,35 @@ describe("POST /api/agents/[id]/chat", () => {
     expect(response.status).toBe(500);
     const body = await response.json();
     expect(body.error).toBeTruthy();
+  });
+
+  it("passes the agent's tools to streamText for an agent that has some, and omits them for one that doesn't", async () => {
+    const toUIMessageStreamResponse = vi.fn().mockReturnValue(new Response("stream"));
+    streamTextMock.mockReturnValue({ toUIMessageStreamResponse });
+
+    const messages = [{ id: "1", role: "user", parts: [{ type: "text", text: "hi" }] }];
+
+    await POST(makeRequest({ messages }), makeParams("incident-summarizer"));
+    expect(streamTextMock).toHaveBeenCalledWith(
+      expect.objectContaining({ tools: { "mock-tool": {} } }),
+    );
+
+    streamTextMock.mockClear();
+    await POST(makeRequest({ messages }), makeParams("pr-reviewer"));
+    expect(streamTextMock).toHaveBeenCalledWith(expect.objectContaining({ tools: undefined }));
+  });
+
+  it("gives toUIMessageStreamResponse an onError that surfaces a thrown Error's message", async () => {
+    const toUIMessageStreamResponse = vi.fn().mockReturnValue(new Response("stream"));
+    streamTextMock.mockReturnValue({ toUIMessageStreamResponse });
+
+    const messages = [{ id: "1", role: "user", parts: [{ type: "text", text: "hi" }] }];
+    await POST(makeRequest({ messages }), makeParams("pr-reviewer"));
+
+    const { onError } = toUIMessageStreamResponse.mock.calls[0][0] as {
+      onError: (error: unknown) => string;
+    };
+    expect(onError(new Error("60000 minutes is implausible"))).toBe("60000 minutes is implausible");
+    expect(onError("some non-Error value")).toBe("An error occurred.");
   });
 });
