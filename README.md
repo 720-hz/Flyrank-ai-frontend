@@ -39,3 +39,10 @@ npm run dev
 ```
 
 Then open [http://localhost:3000](http://localhost:3000).
+
+## Environment variables
+
+Copy [`.env.example`](./.env.example) to `.env.local` and fill in real values for local
+development — `.env.local` is gitignored, never commit it. In Vercel, set the same variables
+under Project Settings → Environment Variables, separately per environment (Production /
+Preview / Development).
