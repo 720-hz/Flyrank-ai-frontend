@@ -35,7 +35,11 @@ h6 {
 
 /* Respect "Reduce motion" system-wide: tw-animate-css's animate-in utilities (used for the
    shadcn dialog's open/close transitions and the chat's message/indicator handoff) collapse
-   to effectively instant rather than being disabled piecemeal per component. */
+   to effectively instant rather than being disabled piecemeal per component. The same blanket
+   rule is what neutralizes the playground LifecycleButton's shake/pop/spin below — the
+   0.01ms animation-duration and 1-iteration cap apply to them too, with zero extra code in
+   that component. See playground/NOTES.md for why that's deliberate, not an oversight.
+   Feedback itself (label text, icon, color) is never conditioned on this — only the motion is. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -44,5 +48,40 @@ h6 {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* playground/lifecycle-button.tsx: one-shot keyframes for the error "shake" and success
+   "pop". Both only ever animate transform (translateX / scale) — no layout-affecting
+   property — so they stay compositor-friendly per the "Buttons with a Brain" brief. */
+@keyframes shake {
+  10%,
+  90% {
+    transform: translateX(-1px);
+  }
+  20%,
+  80% {
+    transform: translateX(2px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-4px);
+  }
+  40%,
+  60% {
+    transform: translateX(4px);
+  }
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
   }
 }

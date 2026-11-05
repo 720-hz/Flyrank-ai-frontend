@@ -1,9 +1,15 @@
 "use client";
 
+import { Save, Send } from "lucide-react";
 import { useState } from "react";
 import { Modal } from "../../../playground/modal";
 import { Tabs } from "../../../playground/tabs";
 import { Disclosure } from "../../../playground/disclosure";
+import {
+  LifecycleButton,
+  fakeAsyncAction,
+  usePrefersReducedMotionLabel,
+} from "../../../playground/lifecycle-button";
 import {
   Dialog,
   DialogContent,
@@ -33,10 +39,50 @@ const TAB_ITEMS = [
  */
 export default function PlaygroundPage() {
   const [modalOpen, setModalOpen] = useState(false);
+  const reducedMotionLabel = usePrefersReducedMotionLabel();
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-10 px-6 py-10">
       <h1 className="text-xl font-semibold text-text">Accessible components playground</h1>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-text/70">
+          Buttons with a brain (animated lifecycle button)
+        </h2>
+        <p className="text-sm text-text/70">
+          Click either button: each runs a fake async call with a random 500–1500ms delay and
+          a 20% failure rate, so you&rsquo;ll see both the success and error paths across a few
+          tries. A failed button becomes &ldquo;Retry&rdquo; — clicking it runs the same call
+          again. Your system&rsquo;s &ldquo;Reduce motion&rdquo; setting is currently{" "}
+          <strong>{reducedMotionLabel}</strong>.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <LifecycleButton idleLabel="Send message" icon={Send} onPress={fakeAsyncAction} />
+          <LifecycleButton
+            idleLabel="Save changes"
+            loadingLabel="Saving…"
+            successLabel="Saved"
+            icon={Save}
+            onPress={fakeAsyncAction}
+          />
+        </div>
+        <p className="text-xs text-text/60">
+          Durations and easing, briefly: hover/press feedback is 150ms ease-out (fast enough to
+          feel immediate, slow enough to register as intentional rather than a flicker).
+          State-layer crossfades (label/icon swap) are 200ms ease-out — long enough to read as
+          a transition, short enough not to make a chat button feel sluggish. The error shake
+          and success &ldquo;pop&rdquo; are one-shot 300–400ms keyframes on{" "}
+          <code>transform</code> only (translateX / scale), never on layout-affecting
+          properties, so they stay off the main thread. The button has a fixed min-width
+          instead of animating its width to fit each label — deliberate: the brief&rsquo;s own
+          requirements rule out layout-affecting animation, which a width tween is by
+          definition, even though the brief&rsquo;s example copy suggests it. All of the above
+          collapses to nearly-instant under <code>prefers-reduced-motion</code> via the
+          site-wide rule in <code>globals.css</code> — the feedback (label, icon, color) still
+          changes, just without the motion. Full writeup in{" "}
+          <code>playground/NOTES.md</code>.
+        </p>
+      </section>
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-text/70">Modal dialog</h2>
