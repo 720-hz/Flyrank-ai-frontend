@@ -45,6 +45,18 @@ refreshing loses the conversation, same "no real backend" posture as the rest of
 product. A natural fit for `/runs`: logging each conversation as a Run is the obvious next
 step, left for a later assignment rather than scope-creeping into this one.
 
+## Tool calling / generative UI (FE-07)
+
+The Incident Summarizer agent can call a server-side tool, `scoreIncidentSeverity`
+(`src/lib/ai/tools.ts`), to compute an objective SEV1–SEV4 severity score instead of having
+the model guess one in prose. The tool's four lifecycle states (input streaming, input
+available, output available, output error) each render distinctly in
+`src/app/agents/[id]/tool-parts.tsx`; a successful result renders as a scorecard component
+(`IncidentSeverityCard`), not a JSON dump. Full contract documented in the README's
+"Tool contract" section. Only this one agent has a tool today (`AGENT_TOOLS` in
+`src/lib/ai/config.ts` is per-agent) — PR Reviewer and Release Notes Drafter stay prose-only
+since neither has a structured result worth rendering as a component yet.
+
 ## Navigation structure
 
 Root layout nav: **Dashboard · Agents · Runs · Health · Account**. "Account" expands to the

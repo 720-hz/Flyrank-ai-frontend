@@ -1,5 +1,5 @@
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
-import { CHAT_GENERATION_SETTINGS, chatModel, getAgentById } from "@/lib/ai/config";
+import { CHAT_GENERATION_SETTINGS, chatModel, getAgentById, getAgentTools } from "@/lib/ai/config";
 
 // Streaming responses can run longer than a typical request; raise the route's
 // allowed duration above Next.js/Vercel's default so a long generation isn't cut off.
@@ -33,10 +33,19 @@ export async function POST(request: Request, { params }: RouteContext<"/api/agen
       model: chatModel,
       system: agent.systemPrompt,
       messages: await convertToModelMessages(body.messages),
+      tools: getAgentTools(id),
       ...CHAT_GENERATION_SETTINGS,
     });
 
-    return result.toUIMessageStreamResponse();
+    return result.toUIMessageStreamResponse({
+      // The AI SDK's default onError returns a generic "An error occurred."
+      // for every error, tool-execution failures included, so server details
+      // never leak to the client by accident. scoreIncidentSeverity's one
+      // designed failure mode (an implausible duration) throws a specific,
+      // actionable message on purpose — surface that message instead of the
+      // generic fallback, but keep the fallback for anything unexpected.
+      onError: (error) => (error instanceof Error ? error.message : "An error occurred."),
+    });
   } catch (error) {
     // Most likely cause here is a missing/invalid ANTHROPIC_API_KEY — the AI SDK
     // throws before any streaming starts in that case, so a normal JSON error

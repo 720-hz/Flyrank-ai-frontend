@@ -8,6 +8,7 @@
  * route handler.
  */
 import { anthropic } from "@ai-sdk/anthropic";
+import { scoreIncidentSeverity } from "@/lib/ai/tools";
 
 /**
  * Model id, overridable via env so a model bump doesn't need a code change.
@@ -88,10 +89,31 @@ Your job: when a user pastes a raw incident timeline (timestamps, log lines, cha
 whatever they have), turn it into a structured summary: what happened, when it started and \
 was resolved, likely root cause (flagged clearly as "likely" if not confirmed by the input), \
 impact, and suggested follow-up actions. Stay neutral and factual — this feeds a postmortem, \
-not a blame narrative. If the timeline has gaps, note them explicitly rather than guessing.`,
+not a blame narrative. If the timeline has gaps, note them explicitly rather than guessing.
+
+Once you can state the impact summary, a rough fraction of affected users, how long it \
+lasted in minutes, and whether any data was lost or corrupted, call the \
+\`scoreIncidentSeverity\` tool to compute the severity — don't state a SEV level yourself, \
+the tool's rubric is the source of truth. If the input doesn't give you enough to fill in \
+one of those fields confidently, ask a clarifying question instead of guessing a value just \
+to call the tool.`,
   },
 ];
 
 export function getAgentById(id: string): ConsoleAgent | undefined {
   return CONSOLE_AGENTS.find((agent) => agent.id === id);
+}
+
+/**
+ * Per-agent tool access. Only the Incident Summarizer has a tool today — the
+ * other two agents review/draft prose and have nothing structured to call out
+ * to. Keyed by agent id so the route handler stays a thin lookup rather than
+ * growing per-agent branching logic.
+ */
+export const AGENT_TOOLS = {
+  "incident-summarizer": { scoreIncidentSeverity },
+} satisfies Record<string, Record<string, unknown>>;
+
+export function getAgentTools(id: string) {
+  return AGENT_TOOLS[id as keyof typeof AGENT_TOOLS];
 }
