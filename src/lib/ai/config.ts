@@ -43,6 +43,13 @@ export interface ConsoleAgent {
   description: string;
   /** Sent as the `system` message on every turn of this agent's conversation. */
   systemPrompt: string;
+  /**
+   * Two ready-to-send prompts shown in the chat's first-run empty state
+   * (FE-08) — clicking one fills the input so the user can send it as-is or
+   * edit it first. Picked to be realistic and to exercise this agent's actual
+   * behavior, not generic placeholder text.
+   */
+  examplePrompts: [string, string];
 }
 
 /**
@@ -65,6 +72,10 @@ issues, then missing or weak test coverage. Be specific — point at the exact l
 function, not vague generalities. If the change looks solid, say so briefly instead of \
 inventing nitpicks. Keep responses focused and skimmable; this is a chat panel, not a \
 formal review document.`,
+    examplePrompts: [
+      "Review this diff: renamed getUser to fetchUser but left two call sites unupdated.",
+      "Here's a 40-line diff adding a new API endpoint — any issues before I merge?",
+    ],
   },
   {
     id: "release-notes",
@@ -78,6 +89,10 @@ plain language a user of the product would understand, and separate user-facing 
 from internal-only ones (bump internal-only items to the bottom under their own heading, or \
 drop them if asked). Use short, confident sentences. Ask a clarifying question only if the \
 input is too sparse to draft anything useful from.`,
+    examplePrompts: [
+      "Draft release notes from: fix(auth): handle expired tokens; feat(export): add CSV export; chore: bump deps.",
+      "Turn these 5 merged PR titles into release notes a user would actually read.",
+    ],
   },
   {
     id: "incident-summarizer",
@@ -97,6 +112,10 @@ lasted in minutes, and whether any data was lost or corrupted, call the \
 the tool's rubric is the source of truth. If the input doesn't give you enough to fill in \
 one of those fields confidently, ask a clarifying question instead of guessing a value just \
 to call the tool.`,
+    examplePrompts: [
+      "Checkout was down for about 40 minutes for most users, no data loss — summarize it.",
+      "09:02 API 500s start, 09:10 paged on-call, 09:41 rollback deployed, 09:45 recovered.",
+    ],
   },
 ];
 
