@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel a previous in-progress run for the same branch/PR when new commits land.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint, unit tests, build, and E2E
+    runs-on: ubuntu-latest
+    env:
+      # The component tests mock @ai-sdk/react's useChat entirely (never hit this route),
+      # and the Playwright E2E tests intercept this agent's chat route at the network layer
+      # (see e2e/mock-ui-message-stream.ts) — so a real key is never required to pass this
+      # suite. `next build` also doesn't need a real key: the AI SDK provider is only
+      # constructed, not called, at build time. This placeholder exists purely so a
+      # moved/duplicated test that *did* forget to mock the route fails loudly on an
+      # obviously-fake key instead of silently hitting production Anthropic with a real one.
+      ANTHROPIC_API_KEY: ci-placeholder-not-a-real-key
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run unit/component tests (Vitest)
+        run: npm run test:run
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Playwright's Chromium browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run end-to-end tests (Playwright)
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
