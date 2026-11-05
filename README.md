@@ -98,3 +98,30 @@ distinct visual per state — the first two show the input filling in inside a p
 (placeholders for fields not yet streamed), `output-available` renders a real
 `IncidentSeverityCard` component (badge + score bar + factor breakdown + recommendation, not
 a JSON dump), and `output-error` renders a red error card with the specific message above.
+
+## Resilience & failure states (FE-08)
+
+Inventory of the primary flow's (`/agents/[id]`'s streaming chat) expected and unexpected
+failure modes, and how each is handled:
+
+| Case | Handling |
+| --- | --- |
+| Mid-stream failure (model overloaded, rate-limited, connection drops after streaming starts) | The route's `onError` surfaces a designed message; the chat shows a red error card with that message and a **Retry** button that calls `regenerate()` — resending only the failed turn, not the whole conversation (`src/app/agents/[id]/agent-chat.tsx`). |
+| Pre-stream failure (missing/invalid API key, a provider error before any chunk streams) | The route's top-level `catch` returns `{ error }` JSON with the right status. `HttpChatTransport` doesn't parse that JSON for you — its `.message` is the raw response *text* — so `describeChatError` (`src/lib/ai/chat-error.ts`) unwraps the `error` field instead of showing the literal `{"error":"..."}` string. |
+| Rate limit / provider overload | `describeProviderError` (`src/lib/ai/server-error.ts`) recognizes an `APICallError` with status 429/503/529 and returns actionable copy ("wait a moment and try again") instead of raw provider text — used from both the pre-stream `catch` and the mid-stream `onError`, so the two paths agree. |
+| Network failure before send | `useOnlineStatus` (`src/lib/use-online-status.ts`, built on `useSyncExternalStore`) shows a banner and disables Send/the textarea the moment the browser goes offline, instead of waiting for a fetch to fail first. |
+| Empty / whitespace-only input | Unchanged from FE-06 — Send stays disabled. |
+| First-run / no conversation yet | Each agent now ships two realistic `examplePrompts` (`src/lib/ai/config.ts`); the empty state renders them as click-to-fill chips instead of a bare sentence. |
+| Unknown agent (e.g. `/agents/does-not-exist`) | `agents/[id]/not-found.tsx` explains why and links back to `/agents`, instead of Next's generic 404. |
+| Uncaught render error | `app/error.tsx` (app-wide) and the more specific `agents/[id]/error.tsx` both offer **Try again** (Next's `retry()`) and a way back; `app/global-error.tsx` covers a crash in the root layout itself, with its own inline styles since it replaces the whole document. |
+| Slow response | FE-06's thinking-dots indicator, plus new `loading.tsx` skeletons on `/agents` and `/agents/[id]` sized to the real layout so there's no shift when content swaps in. |
+| Mobile Safari | The chat textarea is `text-base` (16px) at every breakpoint — under 16px, iOS Safari auto-zooms the page on focus, which on a chat screen means every send yanks the viewport in and out. Verified at 375×667 with zero horizontal overflow in both the empty and error states. |
+
+All of the above were exercised live against the dev server with Playwright — intercepting
+the chat route to simulate each failure rather than depending on the real provider — not just
+unit-tested: happy path, mid-stream overload followed by a successful retry, a pre-stream 500
+(confirms the JSON body doesn't leak as literal text), a 429, the offline banner, the
+unknown-agent 404, and the mobile viewport in both the empty and error states. Zero uncaught
+page errors across all of them; the only console output was the browser's own network-level
+logging of the intentionally-sabotaged non-2xx responses, which is unavoidable for any failed
+request and not specific to this app.

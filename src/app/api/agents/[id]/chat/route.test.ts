@@ -1,12 +1,17 @@
+import { APICallError } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const streamTextMock = vi.fn();
 const convertToModelMessagesMock = vi.fn();
 
-vi.mock("ai", () => ({
-  streamText: (...args: unknown[]) => streamTextMock(...args),
-  convertToModelMessages: (...args: unknown[]) => convertToModelMessagesMock(...args),
-}));
+vi.mock("ai", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("ai")>();
+  return {
+    ...actual,
+    streamText: (...args: unknown[]) => streamTextMock(...args),
+    convertToModelMessages: (...args: unknown[]) => convertToModelMessagesMock(...args),
+  };
+});
 
 vi.mock("@/lib/ai/config", () => ({
   chatModel: "mock-model",
@@ -132,5 +137,34 @@ describe("POST /api/agents/[id]/chat", () => {
     };
     expect(onError(new Error("60000 minutes is implausible"))).toBe("60000 minutes is implausible");
     expect(onError("some non-Error value")).toBe("An error occurred.");
+  });
+
+  it("gives onError a friendly message for a mid-stream rate-limit or overload error (FE-08)", async () => {
+    const toUIMessageStreamResponse = vi.fn().mockReturnValue(new Response("stream"));
+    streamTextMock.mockReturnValue({ toUIMessageStreamResponse });
+
+    const messages = [{ id: "1", role: "user", parts: [{ type: "text", text: "hi" }] }];
+    await POST(makeRequest({ messages }), makeParams("pr-reviewer"));
+
+    const { onError } = toUIMessageStreamResponse.mock.calls[0][0] as {
+      onError: (error: unknown) => string;
+    };
+    const rateLimited = new APICallError({ message: "raw", url: "x", requestBodyValues: {}, statusCode: 429 });
+    const overloaded = new APICallError({ message: "raw", url: "x", requestBodyValues: {}, statusCode: 529 });
+    expect(onError(rateLimited)).toMatch(/receiving a lot of requests/);
+    expect(onError(overloaded)).toMatch(/overloaded/i);
+  });
+
+  it("returns the provider's status and a friendly message when streamText throws a rate-limit error synchronously", async () => {
+    streamTextMock.mockImplementation(() => {
+      throw new APICallError({ message: "raw", url: "x", requestBodyValues: {}, statusCode: 429 });
+    });
+
+    const messages = [{ id: "1", role: "user", parts: [{ type: "text", text: "hi" }] }];
+    const response = await POST(makeRequest({ messages }), makeParams("pr-reviewer"));
+
+    expect(response.status).toBe(429);
+    const body = await response.json();
+    expect(body.error).toMatch(/receiving a lot of requests/);
   });
 });

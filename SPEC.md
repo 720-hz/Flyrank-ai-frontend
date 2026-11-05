@@ -57,6 +57,19 @@ available, output available, output error) each render distinctly in
 `src/lib/ai/config.ts` is per-agent) — PR Reviewer and Release Notes Drafter stay prose-only
 since neither has a structured result worth rendering as a component yet.
 
+## Resilience & failure states (FE-08)
+
+The primary flow (`/agents/[id]`'s streaming chat) now handles its failure and edge cases
+deliberately instead of leaving them to crash or show a raw/generic message: a mid-stream
+provider failure (overload, rate limit, dropped connection) gets a designed error card with a
+**Retry** that resends only the failed turn; a pre-stream failure (missing API key) no longer
+leaks its raw JSON response body as literal text; the browser going offline disables sending
+proactively rather than waiting for a failed request; the first-run empty state offers
+click-to-fill example prompts instead of a bare sentence; an unknown agent id and an uncaught
+render error both get a styled page with a way back, instead of Next's defaults. Full
+inventory and the file each case lives in are documented in the README's "Resilience &
+failure states" section.
+
 ## Navigation structure
 
 Root layout nav: **Dashboard · Agents · Runs · Health · Account**. "Account" expands to the

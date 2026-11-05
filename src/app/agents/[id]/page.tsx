@@ -28,7 +28,7 @@ export default async function AgentDetailPage({ params }: PageProps<"/agents/[id
         <h1 className="text-xl font-semibold text-text">{agent.name}</h1>
         <p className="mt-1 text-sm text-text/70">{agent.description}</p>
       </div>
-      <AgentChat agentId={agent.id} agentName={agent.name} />
+      <AgentChat agentId={agent.id} agentName={agent.name} examplePrompts={agent.examplePrompts} />
     </main>
   );
 }

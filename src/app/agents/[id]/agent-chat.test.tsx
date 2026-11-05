@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { UIMessage } from "ai";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentChat } from "./agent-chat";
+import { APICallError, type UIMessage } from "ai";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AgentChat, type AgentChatProps } from "./agent-chat";
 
 const useChatMock = vi.fn();
 
@@ -10,11 +10,15 @@ vi.mock("@ai-sdk/react", () => ({
   useChat: (...args: unknown[]) => useChatMock(...args),
 }));
 
-vi.mock("ai", () => ({
-  DefaultChatTransport: class {
-    constructor(public options: unknown) {}
-  },
-}));
+vi.mock("ai", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("ai")>();
+  return {
+    ...actual,
+    DefaultChatTransport: class {
+      constructor(public options: unknown) {}
+    },
+  };
+});
 
 vi.mock("streamdown", () => ({
   Streamdown: ({ children }: { children: string }) => <div data-testid="streamdown">{children}</div>,
@@ -34,14 +38,28 @@ function toolMessage(id: string, part: Record<string, unknown>): UIMessage {
   };
 }
 
+const DEFAULT_EXAMPLE_PROMPTS: [string, string] = ["Example prompt one", "Example prompt two"];
+
+function renderAgentChat(props: Partial<AgentChatProps> = {}) {
+  return render(
+    <AgentChat
+      agentId={props.agentId ?? "pr-reviewer"}
+      agentName={props.agentName ?? "PR Reviewer"}
+      examplePrompts={props.examplePrompts ?? DEFAULT_EXAMPLE_PROMPTS}
+    />,
+  );
+}
+
 const sendMessage = vi.fn();
 const stop = vi.fn();
+const regenerate = vi.fn();
 
 function mockChat(overrides: Partial<ReturnType<typeof useChatMock>>) {
   useChatMock.mockReturnValue({
     messages: [],
     sendMessage,
     stop,
+    regenerate,
     status: "ready",
     error: undefined,
     ...overrides,
@@ -51,19 +69,35 @@ function mockChat(overrides: Partial<ReturnType<typeof useChatMock>>) {
 beforeEach(() => {
   sendMessage.mockReset();
   stop.mockReset();
+  regenerate.mockReset();
   useChatMock.mockReset();
+});
+
+afterEach(() => {
+  Object.defineProperty(navigator, "onLine", { value: true, configurable: true, writable: true });
 });
 
 describe("AgentChat", () => {
   it("shows an empty-state prompt before any messages", () => {
     mockChat({ messages: [] });
-    render(<AgentChat agentId="pr-reviewer" agentName="PR Reviewer" />);
+    renderAgentChat();
     expect(screen.getByText(/Send a message to start a conversation with PR Reviewer/)).toBeInTheDocument();
+  });
+
+  it("fills the input with an example prompt when clicked, without sending it", async () => {
+    const user = userEvent.setup();
+    mockChat({ messages: [] });
+    renderAgentChat();
+
+    await user.click(screen.getByRole("button", { name: DEFAULT_EXAMPLE_PROMPTS[0] }));
+
+    expect(screen.getByRole("textbox", { name: "Message PR Reviewer" })).toHaveValue(DEFAULT_EXAMPLE_PROMPTS[0]);
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it("shows the thinking indicator while the request is submitted, before any assistant message exists", () => {
     mockChat({ messages: [textMessage("u1", "user", "hi")], status: "submitted" });
-    render(<AgentChat agentId="pr-reviewer" agentName="PR Reviewer" />);
+    renderAgentChat();
     expect(screen.getByRole("status", { name: "PR Reviewer is thinking" })).toBeInTheDocument();
   });
 
@@ -72,7 +106,7 @@ describe("AgentChat", () => {
       messages: [textMessage("u1", "user", "hi"), textMessage("a1", "assistant", "")],
       status: "streaming",
     });
-    render(<AgentChat agentId="pr-reviewer" agentName="PR Reviewer" />);
+    renderAgentChat();
     expect(screen.getByRole("status", { name: "PR Reviewer is thinking" })).toBeInTheDocument();
   });
 
@@ -81,14 +115,14 @@ describe("AgentChat", () => {
       messages: [textMessage("u1", "user", "hi"), textMessage("a1", "assistant", "Looks good")],
       status: "streaming",
     });
-    render(<AgentChat agentId="pr-reviewer" agentName="PR Reviewer" />);
+    renderAgentChat();
     expect(screen.queryByRole("status", { name: "PR Reviewer is thinking" })).not.toBeInTheDocument();
     expect(screen.getByTestId("streamdown")).toHaveTextContent("Looks good");
   });
 
   it("renders user messages as plain text, not through the markdown renderer", () => {
     mockChat({ messages: [textMessage("u1", "user", "**not markdown**")], status: "ready" });
-    render(<AgentChat agentId="pr-reviewer" agentName="PR Reviewer" />);
+    renderAgentChat();
     expect(screen.getByText("**not markdown**")).toBeInTheDocument();
     expect(screen.queryByTestId("streamdown")).not.toBeInTheDocument();
   });
@@ -99,7 +133,7 @@ describe("AgentChat", () => {
       messages: [textMessage("u1", "user", "hi"), textMessage("a1", "assistant", "partial answer")],
       status: "streaming",
     });
-    render(<AgentChat agentId="pr-reviewer" agentName="PR Reviewer" />);
+    renderAgentChat();
 
     expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
     const stopButton = screen.getByRole("button", { name: "Stop" });
@@ -112,18 +146,20 @@ describe("AgentChat", () => {
 
   it("disables the input while busy and re-enables it once ready", () => {
     mockChat({ messages: [], status: "streaming" });
-    const { rerender } = render(<AgentChat agentId="pr-reviewer" agentName="PR Reviewer" />);
+    const { rerender } = renderAgentChat();
     expect(screen.getByRole("textbox", { name: "Message PR Reviewer" })).toBeDisabled();
 
     mockChat({ messages: [], status: "ready" });
-    rerender(<AgentChat agentId="pr-reviewer" agentName="PR Reviewer" />);
+    rerender(
+      <AgentChat agentId="pr-reviewer" agentName="PR Reviewer" examplePrompts={DEFAULT_EXAMPLE_PROMPTS} />,
+    );
     expect(screen.getByRole("textbox", { name: "Message PR Reviewer" })).toBeEnabled();
   });
 
   it("sends the typed message and clears the input, and a second send works after that", async () => {
     const user = userEvent.setup();
     mockChat({ messages: [], status: "ready" });
-    render(<AgentChat agentId="pr-reviewer" agentName="PR Reviewer" />);
+    renderAgentChat();
 
     const textarea = screen.getByRole("textbox", { name: "Message PR Reviewer" });
     await user.type(textarea, "first question");
@@ -142,7 +178,7 @@ describe("AgentChat", () => {
   it("does not send an empty or whitespace-only message", async () => {
     const user = userEvent.setup();
     mockChat({ messages: [], status: "ready" });
-    render(<AgentChat agentId="pr-reviewer" agentName="PR Reviewer" />);
+    renderAgentChat();
 
     const sendButton = screen.getByRole("button", { name: "Send" });
     expect(sendButton).toBeDisabled();
@@ -156,7 +192,7 @@ describe("AgentChat", () => {
   it("sends on Enter and inserts a newline on Shift+Enter instead of sending", async () => {
     const user = userEvent.setup();
     mockChat({ messages: [], status: "ready" });
-    render(<AgentChat agentId="pr-reviewer" agentName="PR Reviewer" />);
+    renderAgentChat();
 
     const textarea = screen.getByRole("textbox", { name: "Message PR Reviewer" });
     await user.type(textarea, "line one");
@@ -175,11 +211,61 @@ describe("AgentChat", () => {
       status: "error",
       error: new Error("The agent failed to respond. Please try again."),
     });
-    render(<AgentChat agentId="pr-reviewer" agentName="PR Reviewer" />);
+    renderAgentChat();
 
     expect(screen.getByRole("alert")).toHaveTextContent("The agent failed to respond. Please try again.");
     expect(screen.getByRole("textbox", { name: "Message PR Reviewer" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+  });
+
+  it("shows a designed error card with a working Retry for a mid-stream failure, and retries only the last message", async () => {
+    const user = userEvent.setup();
+    mockChat({
+      messages: [textMessage("u1", "user", "Checkout was down for an hour")],
+      status: "error",
+      error: new Error("Claude is temporarily overloaded. Wait a moment and try again."),
+    });
+    renderAgentChat({ agentId: "incident-summarizer", agentName: "Incident Summarizer" });
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Claude is temporarily overloaded. Wait a moment and try again.");
+
+    const retryButton = screen.getByRole("button", { name: "Retry sending your last message" });
+    await user.click(retryButton);
+
+    expect(regenerate).toHaveBeenCalledTimes(1);
+    expect(regenerate).toHaveBeenCalledWith();
+  });
+
+  it("ignores a second Retry click while the first retry is still in flight", () => {
+    mockChat({
+      messages: [textMessage("u1", "user", "hi")],
+      status: "error",
+      error: new Error("Something went wrong. Please try again."),
+    });
+    renderAgentChat();
+
+    const retryButton = screen.getByRole("button", { name: "Retry sending your last message" });
+    fireEvent.click(retryButton);
+    fireEvent.click(retryButton);
+
+    expect(regenerate).toHaveBeenCalledTimes(1);
+  });
+
+  it("unwraps a raw JSON error body from the server into a clean retry-card message", () => {
+    const apiError = new APICallError({
+      message: '{"error":"Unknown agent: nonexistent"}',
+      url: "/api/agents/nonexistent/chat",
+      requestBodyValues: {},
+      statusCode: 404,
+      responseBody: '{"error":"Unknown agent: nonexistent"}',
+    });
+
+    mockChat({ messages: [textMessage("u1", "user", "hi")], status: "error", error: apiError });
+    renderAgentChat();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Unknown agent: nonexistent");
+    expect(screen.queryByText(/"error":/)).not.toBeInTheDocument();
   });
 
   it("renders a tool part's severity card alongside the message list", () => {
@@ -199,7 +285,7 @@ describe("AgentChat", () => {
       ],
       status: "ready",
     });
-    render(<AgentChat agentId="incident-summarizer" agentName="Incident Summarizer" />);
+    renderAgentChat({ agentId: "incident-summarizer", agentName: "Incident Summarizer" });
 
     expect(screen.getByRole("status", { name: /Incident severity: SEV2/ })).toBeInTheDocument();
   });
@@ -212,15 +298,37 @@ describe("AgentChat", () => {
       ],
       status: "streaming",
     });
-    render(<AgentChat agentId="incident-summarizer" agentName="Incident Summarizer" />);
+    renderAgentChat({ agentId: "incident-summarizer", agentName: "Incident Summarizer" });
 
     expect(screen.queryByRole("status", { name: "Incident Summarizer is thinking" })).not.toBeInTheDocument();
     expect(screen.getByText("Reading incident details…")).toBeInTheDocument();
   });
 
+  it("shows an offline banner and disables sending while the browser reports offline", async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true, writable: true });
+    mockChat({ messages: [], status: "ready" });
+    renderAgentChat();
+
+    expect(await screen.findByText(/You.re offline/)).toBeInTheDocument();
+
+    const textarea = screen.getByRole("textbox", { name: "Message PR Reviewer" });
+    expect(textarea).toBeDisabled();
+
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true, writable: true });
+    fireEvent(window, new Event("online"));
+
+    expect(screen.queryByText(/You.re offline/)).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Message PR Reviewer" })).toBeEnabled();
+
+    await user.type(screen.getByRole("textbox", { name: "Message PR Reviewer" }), "hi");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(sendMessage).toHaveBeenCalledWith({ text: "hi" });
+  });
+
   it("shows a jump-to-latest control once the user scrolls away from the bottom", () => {
     mockChat({ messages: [textMessage("u1", "user", "hi")], status: "ready" });
-    render(<AgentChat agentId="pr-reviewer" agentName="PR Reviewer" />);
+    renderAgentChat();
 
     const container = screen.getByTestId("messages-scroll");
     Object.defineProperty(container, "scrollHeight", { value: 1000, configurable: true });
