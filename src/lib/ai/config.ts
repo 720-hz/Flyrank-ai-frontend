@@ -35,6 +35,17 @@ export const CHAT_GENERATION_SETTINGS = {
   maxOutputTokens: 1024,
 } as const;
 
+/**
+ * Per-IP rate limit for the chat route (FE-14 production hygiene) — see `src/lib/rate-limit.ts`
+ * for the limiter itself and its documented in-memory tradeoff. 10 requests per minute is
+ * generous for a human actually using the chat (each turn is one request), but cheap to hit for
+ * a script — which is exactly the thing this guards against.
+ */
+export const CHAT_RATE_LIMIT = {
+  limit: 10,
+  windowMs: 60_000,
+} as const;
+
 export interface ConsoleAgent {
   /** URL-safe id — used as the dynamic segment in /agents/[id] and the chat route. */
   id: string;

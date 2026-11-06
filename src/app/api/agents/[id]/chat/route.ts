@@ -1,6 +1,8 @@
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
-import { CHAT_GENERATION_SETTINGS, chatModel, getAgentById, getAgentTools } from "@/lib/ai/config";
+import { CHAT_GENERATION_SETTINGS, CHAT_RATE_LIMIT, chatModel, getAgentById, getAgentTools } from "@/lib/ai/config";
 import { describeProviderError } from "@/lib/ai/server-error";
+import { validateChatRequest } from "@/lib/ai/validate-chat-request";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 // Streaming responses can run longer than a typical request; raise the route's
 // allowed duration above Next.js/Vercel's default so a long generation isn't cut off.
@@ -18,6 +20,17 @@ export async function POST(request: Request, { params }: RouteContext<"/api/agen
     return Response.json({ error: `Unknown agent: ${id}` }, { status: 404 });
   }
 
+  // Rate limit before touching the body at all — the cheapest possible rejection for a script
+  // hammering this route (FE-14). See src/lib/rate-limit.ts for the limiter and its tradeoffs.
+  const clientIp = getClientIp(request);
+  const rateLimitResult = checkRateLimit(`chat:${clientIp}`, CHAT_RATE_LIMIT);
+  if (!rateLimitResult.allowed) {
+    return Response.json(
+      { error: "Too many requests. Please wait a moment and try again." },
+      { status: 429, headers: { "Retry-After": String(rateLimitResult.retryAfterSeconds) } },
+    );
+  }
+
   let body: ChatRequestBody;
   try {
     body = await request.json();
@@ -27,6 +40,11 @@ export async function POST(request: Request, { params }: RouteContext<"/api/agen
 
   if (!Array.isArray(body.messages)) {
     return Response.json({ error: "Request body must include a `messages` array." }, { status: 400 });
+  }
+
+  const validationError = validateChatRequest(body.messages);
+  if (validationError) {
+    return Response.json(validationError, { status: 400 });
   }
 
   try {
