@@ -32,12 +32,18 @@ test.describe("primary flow: dashboard -> agent -> chat", () => {
     await textbox.fill("Here's a diff adding a new helper function, any concerns?");
     await page.getByRole("button", { name: "Send" }).click();
 
+    // Scoped to the message list, not a bare page-wide getByText: FE-12 added a visually-hidden
+    // aria-live region (data-testid="announced-reply") that holds this same completed-reply text
+    // for screen readers, so an unscoped getByText now matches two elements (the live bubble and
+    // the live region) and trips Playwright's strict-mode check.
+    const messages = page.getByTestId("messages-scroll");
+
     // The reply itself, fully arrived. (The busy "Stop" button in between is exercised
     // deterministically by agent-chat.test.tsx's component tests, which control the mocked
     // response's timing directly — here the mocked route resolves in one network tick, so
     // asserting that transient state would just be a race.)
     await expect(
-      page.getByText("The diff looks solid — one nit: the new helper isn't covered by a test yet."),
+      messages.getByText("The diff looks solid — one nit: the new helper isn't covered by a test yet."),
     ).toBeVisible();
 
     // Busy state clears once the stream finishes.
@@ -72,7 +78,10 @@ test.describe("primary flow: dashboard -> agent -> chat", () => {
 
     await page.getByRole("button", { name: "Retry sending your last message" }).click();
 
-    await expect(page.getByText("Looks good now — no issues found.")).toBeVisible();
+    // Scoped to the message list — see the comment on the first test in this file: FE-12's
+    // aria-live region duplicates this same text for screen readers, so a bare getByText matches
+    // both it and the visible bubble.
+    await expect(page.getByTestId("messages-scroll").getByText("Looks good now — no issues found.")).toBeVisible();
     await expect(alert).not.toBeVisible();
   });
 });
