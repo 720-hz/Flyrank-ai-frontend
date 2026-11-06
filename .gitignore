@@ -35,3 +35,7 @@ pnpm-debug.log*
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Scratch workspace for ad-hoc audit tooling output (not the AUDIT.md deliverable screenshots,
+# which live in audit/screenshots/ and are committed)
+audit-scratch/

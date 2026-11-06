@@ -27,7 +27,8 @@ export default function RouteError({
         This page hit an unexpected error. It&rsquo;s been logged — try again, or head back to
         the dashboard.
       </p>
-      {error.digest && <p className="text-xs text-text/40">Reference: {error.digest}</p>}
+      {/* /65, not /40 — see src/app/page.tsx's comment on this contrast fix (FE-12 audit). */}
+      {error.digest && <p className="text-xs text-text/65">Reference: {error.digest}</p>}
       <div className="mt-2 flex gap-2">
         <button
           type="button"
