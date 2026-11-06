@@ -168,3 +168,68 @@ the suite to pass; the Playwright HTML report uploads as a build artifact either
 `ANTHROPIC_API_KEY` is required anywhere in this pipeline — a placeholder value is set purely
 so an un-mocked route that slipped through review would fail loudly on an obviously-fake key
 instead of silently calling production Anthropic.
+
+## Agent Core — a reactive 3D hero (FE-11)
+
+What it is: a small [React Three Fiber](https://r3f.docs.pmnd.rs/) scene on the Dashboard
+(`/`) standing in for the console's own AI subsystem rather than a generic demo object. A
+distorting core (`@react-three/drei`'s `MeshDistortMaterial`) tilts toward the cursor/touch
+position, spins and roughens as its "agent state" (Idle / Thinking / Speaking — the same
+vocabulary `/agents/[id]`'s real chat UI already uses) is changed from a small custom control
+panel, and a **Pulse** button fires a one-shot scale bump standing in for the moment a response
+actually lands. The panel also swaps the core's geometry (icosahedron / torus knot) and its
+color (four presets pulled from the app's own theme tokens). None of this is orbit-controlled
+on purpose — it's a reactive hero sitting in the page, not a product viewer, so nothing invites
+a visitor to drag the camera around while they're skimming the dashboard.
+
+**Interactions, concretely:** cursor/touch-reactive tilt (free from R3F's own normalized
+pointer state — the same code path handles touch, so this doubles as the mobile interaction),
+a state switch that eases rotation speed/surface distortion rather than snapping, a shape swap,
+a color swap, and a triggered one-shot pulse animation — five, where the brief asked for one.
+
+**Perf note.** The real cost here is "three" + "@react-three/fiber" + "@react-three/drei"
+themselves: the one chunk containing all three plus this scene's own code is **908 KB raw /
+238 KB gzipped**. Two separate decisions keep that from being a tax on every Dashboard visit:
+
+1. **It's dynamically imported with `ssr: false`** (`agent-core.tsx` → `next/dynamic(() =>
+   import("./agent-core-scene"))`), so that chunk never ships in the server render or the
+   initial client bundle — confirmed by grepping the built `page_client-reference-manifest.js`
+   for `agent-core-scene`: it appears nowhere in the eager module map, only the small (~12 KB)
+   orchestrator component does. It's fetched only once a visitor actually gets the WebGL path.
+2. **A visitor with `prefers-reduced-motion` set, or without WebGL support, never triggers
+   that import at all.** Both checks happen via `useSyncExternalStore`-backed hooks
+   (`use-prefers-reduced-motion.ts`, `use-webgl-support.ts`) that resolve to the static
+   `AgentCoreFallback` — a single gradient `div`, zero extra JS — before the dynamic import is
+   ever requested, matching the pattern FE-08 already established for "assume the safe default
+   during SSR, reconcile to the real client value right after."
+
+No model file, no DRACO/meshopt pipeline: the core is procedural geometry
+(`icosahedronGeometry` / `torusKnotGeometry`), so there's no asset to compress or lazy-load in
+the first place — the entire weight is the library code, which the above already isolates.
+Lighting is two plain directional lights plus ambient fill, no environment map/HDRI, keeping
+the scene itself cheap to render on top of being cheap to load.
+
+Frame rate: sampled via a real `requestAnimationFrame` counter over a real `next dev` server
+in this environment's headless Chromium, which has no GPU and renders through SwiftShader
+(software) — **52–58 fps** there, which given there's no hardware acceleration at all is a
+reasonable proxy for "nothing about this scene is expensive" rather than a real device number;
+a real GPU should comfortably sit at the display's refresh rate given the scene is one mesh,
+one material, and two lights.
+
+Caught by actually running it, not just writing it: the fallback and the Canvas wrapper share
+`aspect-square w-full max-w-sm` so swapping between them causes no layout shift — except the
+first version of `AgentCoreFallback` wrapped a centered inner circle in its own `flex
+items-center justify-center` div, and that combination (a `display: flex` element that is
+itself a flex item with `aspect-ratio` set, inside this page's shrink-to-fit flex layout)
+collapsed to a real 0×0 box in Chromium — confirmed with `getBoundingClientRect`, not a visual
+read. Fixed by putting the size/radius/gradient directly on one element instead of a
+wrapper-plus-child. A related sizing issue (percentage widths not resolving against a
+shrink-to-fit ancestor) needed `w-full` added up the flex chain in both `page.tsx` and
+`agent-core.tsx`'s own root — see the comment at that line.
+
+**What's next with more time:** `/agents/[id]`'s real `status` (submitted/streaming/error)
+could drive Agent Core's state directly instead of the panel being the only input, so the hero
+reflects an actual in-flight request; an idle→thinking→speaking→idle demo loop for visitors who
+never touch the panel; and `@react-three/postprocessing`'s bloom on the core's highlight for a
+closer match to the "glowing" fallback gradient (skipped here to keep the perf budget simple —
+one mesh, no render-target passes).
