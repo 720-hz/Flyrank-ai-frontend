@@ -233,3 +233,87 @@ reflects an actual in-flight request; an idle→thinking→speaking→idle demo 
 never touch the panel; and `@react-three/postprocessing`'s bloom on the core's highlight for a
 closer match to the "glowing" fallback gradient (skipped here to keep the perf budget simple —
 one mesh, no render-target passes).
+
+## Shader hero — a custom aurora fragment shader (FE-13)
+
+What it is: a fullscreen custom GLSL fragment shader on a new `/about` page (`ShaderHero` →
+`about/page.tsx`), not a remix left mostly as-is — it's a from-scratch domain-warped flow
+field written for this brief, palette-matched to the console's own theme tokens and reusing
+the same R3F/drei plumbing (`shaderMaterial` + `extend`) FE-11's Agent Core already
+established, rather than the session's shader-playground aurora copied wholesale.
+
+**The shader, block by block** (full source + comments in `shader-hero-shader.ts`):
+
+- **Vertex shader**: a fullscreen-quad trick, not a 3D object — `Plane()` in
+  `shader-hero-scene.tsx` renders a 2x2 `planeGeometry`, whose local-space corners already sit
+  at clip-space's `-1..1` extremes, so `gl_Position = vec4(position.xy, 0.0, 1.0)` forwards
+  them straight through with no camera/projection matrix multiply at all. `vUv` is passed
+  through unchanged for the fragment shader to use.
+- **Hash + value noise + fbm**: `hash()` turns a 2D point into a pseudo-random float (no noise
+  texture, no library); `valueNoise()` interpolates between the four hashed corners of a grid
+  cell with `smoothstep` easing so it reads as noise, not a visible grid; `fbm()` stacks 5
+  octaves of that noise at doubling frequency / halving amplitude — one octave alone looks
+  like blobby static, five gives the wispy, layered aurora look.
+- **Domain warp**: `fbm`'s own output feeds back in as an offset to `fbm`'s *input*
+  (`fbm(flowUv + warp * 1.2)` where `warp` is itself two more `fbm` calls). This is the one
+  trick that turns "noise sliding sideways over time" into something that looks like it's
+  actually flowing and curling.
+- **Palette walk**: the field's scalar value is walked through the app's own four theme
+  colors (`--color-main` / accent / the Ember and Violet presets Agent Core already uses from
+  FE-11) via three `smoothstep`-gated `mix()` calls — so this reads as the same product, not
+  an invented rainbow gradient.
+- **Vignette + bottom bias**: darkens the edges, and darkens the lower portion further still,
+  so the headline (anchored near the bottom of the page) always sits on a dark-enough patch
+  regardless of which palette color the flow field happens to land on there.
+- **Grain**: a cheap per-pixel dither (`hash(vUv * u_resolution.xy + u_time) - 0.5`) so the
+  gradient doesn't band on lower-end/compressed displays, and so it reads as deliberately
+  textured rather than a flat CSS gradient.
+
+**Uniforms used** — all three of the brief's core uniforms, not just the required two:
+
+- `u_time` — seconds since mount, driving the domain warp's drift. Explicitly paused (not just
+  implicitly rAF-throttled) while the tab is hidden, via a new `use-tab-visible.ts` hook
+  (`useSyncExternalStore` over the Page Visibility API, same pattern as every other
+  feature-detection hook in this repo) — `delta` simply isn't added to the clock on a tick
+  where the tab was hidden, so the shader freezes on its last frame instead of jumping forward
+  once the tab comes back.
+- `u_resolution` — canvas size in CSS pixels, used only to aspect-correct the UV space fbm
+  samples; devicePixelRatio doesn't change the aspect *ratio*, so no DPR multiply is needed
+  here (DPR is handled separately below).
+- `u_mouse` — pointer position normalized 0..1 within the canvas's own bounding box (not the
+  window), Y-flipped to match `vUv`'s bottom-up convention, eased toward its live target each
+  frame (`lerp(..., 0.06)`) rather than snapped, so the flow field *gently leans* toward the
+  cursor within a soft `smoothstep` falloff radius instead of hard-following it.
+
+**Responsible-shipping measures, one-liner:** `dpr={[1, 2]}` on the R3F `Canvas` caps
+devicePixelRatio at 2x regardless of the real device ratio; `u_time` accumulation explicitly
+pauses on tab-hidden via `use-tab-visible.ts`; and `useWebglSupport()` / `usePrefersReducedMotion()`
+gate the scene behind a static `ShaderHeroFallback` (a plain CSS gradient through the same
+four palette colors, zero extra JS) for visitors without WebGL or with reduced motion set —
+same `next/dynamic(..., { ssr: false })` + safe-default-during-SSR pattern FE-11 established,
+reused here, not reinvented.
+
+**Contrast.** The headline sits over a `black/65 → black/20 → transparent` CSS scrim, chosen
+by computing WCAG contrast ratios numerically (not eyeballed) for white text against every one
+of the shader's four palette colors plus a synthetic near-white grain spike, across four
+candidate scrim opacities — `black/65` clears AA's 4.5:1 floor with comfortable margin in the
+worst case (7.78:1, up to 19:1 depending on the underlying color). The shader's own vignette
+darkens the same region too, but the scrim is what *guarantees* the ratio regardless of what
+the animated shader is doing on a given frame.
+
+**Perf note — the vendor cost is already paid.** The same concern FE-11 flagged
+("three" + "@react-three/fiber" + "@react-three/drei" are the real weight, not the scene
+code) applies here too, but checking the actual production build
+(`.next/server/app/*/page/react-loadable-manifest.json`) shows the vendor chunk is **shared,
+not duplicated**: both Agent Core's dynamic import (`/` → chunk id `29621`) and this shader's
+dynamic import (`/about` → chunk id `58959`) resolve to the exact same
+`static/chunks/22h4t3l6n1nhw.js` — **940 KB raw / 240 KB gzipped** — alongside their own small
+per-page chunk. This hero's own code (the material, the plane, the pointer/clock logic) is
+**8.1 KB raw / 3.7 KB gzipped** on top of that shared chunk. A visitor who has already loaded
+Agent Core on the Dashboard pays effectively nothing extra in vendor weight to then visit
+`/about` — only the 3.7 KB gzipped delta — because Next.js dedupes the identical dynamic
+`import("three")`/`import("@react-three/fiber")` graph into one content-addressed chunk rather
+than bundling a second copy per route.
+
+No model file, no texture: everything here is procedural GLSL on a single 2-triangle plane, so
+there's no asset pipeline and no extra network request beyond the JS chunks above.
