@@ -1,59 +1,306 @@
-# Environment and AI toolchain
+# Flyrank Console
 
-Capstone project for the FlyRank "Frontend Development with AI" track — 14 assignments,
-building a production-style frontend with an AI coding assistant (Claude Code) doing most of
-the heavy lifting, under human direction and review.
+An internal console for AI-assisted engineering work — streaming chat with a set of
+purpose-built agents, a reactive 3D dashboard hero, a custom WebGL shader hero, and the
+account/health scaffolding around them. Built across 14 assignments in FlyRank's "Frontend
+Development with AI" internship track, with [Claude Code](https://code.claude.com/) doing most
+of the implementation under direction and review at every step — see
+["How AI tools built this"](#how-ai-tools-built-this) below for specifics, not a marketing line.
 
-## Status
+**Live:** `<!-- production URL goes here once promoted — see "Promoting to production" below -->`
 
-🚧 **Setup phase.** The actual product this repo will become hasn't been scoped yet — that
-comes in a later assignment. Right now this is a scaffolded Next.js app plus the repo
-conventions the rest of the track will build on.
+## Screenshots
 
-## Stack (starting point, subject to change once the project is scoped)
+| Dashboard — Agent Core (FE-11) | Shader hero — `/about` (FE-13) |
+| --- | --- |
+| ![Dashboard with the reactive Agent Core 3D hero](docs/screenshots/dashboard.jpg) | ![The /about page's custom aurora fragment-shader hero](docs/screenshots/about-shader.jpg) |
 
-- [Next.js](https://nextjs.org/) (React, TypeScript)
-- [Tailwind CSS](https://tailwindcss.com/) for styling
-- AI-assisted development via [Claude Code](https://code.claude.com/)
+| Agent chat — streaming + tool calls (FE-06/FE-07) | Health (`/api/health`, fetched live) |
+| --- | --- |
+| ![PR Reviewer agent chat, empty state with example prompts](docs/screenshots/agent-chat.jpg) | ![Health page showing live status from the API route](docs/screenshots/health.jpg) |
 
-## Conventions
+## What it does
 
-- Commits follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
-  (`feat:`, `fix:`, `chore:`, `docs:`, etc.).
-- See [`CLAUDE.md`](./CLAUDE.md) for the full stack/conventions reference Claude Code reads
-  at the start of every session.
+No real backend exists yet — this is a frontend capstone, and every screen is explicit about
+that rather than faking data. What's real:
 
-## Getting started
+- **`/agents` and `/agents/[id]`** — a real streaming chat (Vercel AI SDK + Anthropic) with
+  three purpose-built agents (PR Reviewer, Release Notes Drafter, Incident Summarizer), each
+  with its own system prompt. The Incident Summarizer can call a server-side tool
+  (`scoreIncidentSeverity`) that computes an objective severity score — the model reports facts,
+  the tool decides the number. Failure states (rate limits, provider overload, offline, a
+  missing API key) are handled deliberately, not left to crash — see
+  [Resilience & failure states](#resilience--failure-states-fe-08).
+- **`/`** — Agent Core, a reactive React Three Fiber scene standing in for the console's own AI
+  subsystem: tilts toward the cursor, changes with agent state, color, and shape.
+- **`/about`** — a fullscreen custom GLSL fragment shader (an aurora/flow-field, not a copy of
+  any stock demo) as a hero behind a headline, with real `u_time`/`u_resolution`/`u_mouse`
+  uniform usage, a WCAG-verified contrast scrim, and the reduced-motion/no-WebGL fallbacks every
+  animated hero here follows.
+- **`/health`** — the one screen that fetches and renders genuinely live data, from this app's
+  own `/api/health` route.
+- **`/account`, `/account/settings`, `/account/activity`** — a validated settings form
+  (`react-hook-form` + `zod`), an overview that reads it back, and an activity log — all backed
+  by `localStorage`, since there's no real backend yet.
+- **`/runs`, `/runs/[id]`** — routed placeholders in the sitemap (see `SPEC.md`), intentionally
+  not built out yet; the natural next step would be logging each agent conversation as a Run.
 
-**Prerequisites**
-
-- [Node.js](https://nodejs.org/) (current LTS) and npm
-- Git
-- [Claude Code](https://code.claude.com/) (optional, but it's how this project is built)
+## Quickstart
 
 ```bash
-git clone https://github.com/720-hz/flyrank-frontend-capstone.git
-cd flyrank-frontend-capstone
+git clone https://github.com/720-hz/Flyrank-ai-frontend.git
+cd Flyrank-ai-frontend
 npm install
+cp .env.example .env.local   # fill in ANTHROPIC_API_KEY — see table below
 npm run dev
 ```
 
-Then open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). Without `ANTHROPIC_API_KEY` set, every
+screen still renders and the chat UI's request/error-handling cycle still works end to end —
+you just won't get real streamed replies (the route returns a clean, designed error instead of
+crashing; see [Resilience & failure states](#resilience--failure-states-fe-08)).
+
+**Verify it's actually working:**
+
+```bash
+npm run lint       # ESLint
+npx tsc --noEmit   # TypeScript
+npm run test:run   # Vitest — 157 tests across 26 files
+npm run test:e2e   # Playwright — real browser, real nav, mocked Anthropic call
+npm run build      # production build
+```
+
+All five are required to pass on every PR via CI (`.github/workflows/ci.yml`).
 
 ## Environment variables
 
-Copy [`.env.example`](./.env.example) to `.env.local` and fill in real values for local
-development — `.env.local` is gitignored, never commit it. In Vercel, set the same variables
-under Project Settings → Environment Variables, separately per environment (Production /
-Preview / Development).
+Copy [`.env.example`](./.env.example) to `.env.local` for local dev (gitignored, never
+committed). In Vercel: Project Settings → Environment Variables, set separately per environment
+so Preview deployments can differ from Production.
 
-## Tool contract (FE-07)
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | Yes, for real chat replies | Read server-side only by the AI SDK's Anthropic provider (`src/lib/ai/config.ts`) — never sent to the browser. Without it, the chat UI still renders and fails gracefully. Get one at [console.anthropic.com](https://console.anthropic.com/settings/keys). |
+| `ANTHROPIC_MODEL_ID` | No | Overrides the model id without a code change. Defaults to `claude-sonnet-4-5`. |
+| `NEXT_PUBLIC_API_BASE_URL` | No | Reserved for a future backend behind `/runs`; not read anywhere yet. `NEXT_PUBLIC_` because it would be safe to expose client-side — unlike the key above, which deliberately has no such prefix. |
+
+## Architecture overview
+
+```
+src/
+  app/
+    page.tsx                 Dashboard — mounts Agent Core
+    about/page.tsx            Shader hero page
+    agents/                   Agents list + [id] streaming chat + tool-part rendering
+    account/                  Overview / Settings / Activity, localStorage-backed
+    health/                   Fetches /api/health
+    api/
+      agents/[id]/chat/       POST — streams a chat turn via the AI SDK
+      health/                 GET — liveness probe
+  components/
+    agent-core/                React Three Fiber reactive dashboard hero (FE-11)
+    shader-hero/                Custom GLSL fragment shader hero (FE-13)
+    root-nav.tsx                Top nav, shared across every route
+  lib/
+    ai/                        Model config, per-agent system prompts, tool contract,
+                                error translation, chat-request validation (FE-14)
+    rate-limit.ts               In-memory per-IP rate limiter (FE-14)
+    activity-log.ts             localStorage-backed account activity log
+    use-*.ts                    useSyncExternalStore feature-detection hooks (online status,
+                                 reduced motion, WebGL support, tab visibility)
+e2e/                            Playwright end-to-end spec + mocked-stream helper
+.github/workflows/ci.yml        Lint → unit tests → build → E2E, on every push/PR
+```
+
+Two things worth knowing before reading the code: every `use-*` hook in `src/lib` follows the
+same `useSyncExternalStore` pattern (subscribe/getSnapshot/getServerSnapshot, safe default
+during SSR) rather than each inventing its own "read a browser API on mount" approach — written
+once in FE-08/FE-11 and reused rather than redone. And every animated 3D/WebGL feature
+(Agent Core, the shader hero) follows the same shape: dynamically imported with `ssr: false`,
+gated behind `useWebglSupport()`/`usePrefersReducedMotion()`, `dpr`-capped, falls back to a
+static CSS gradient — one pattern, established once in FE-11, reused exactly in FE-13.
+
+## Key decisions
+
+- **No real backend.** Every data-bearing screen either fetches something genuinely live
+  (`/health`), reads real but client-only state (`localStorage` for account/settings), or is an
+  explicit routed placeholder (`/runs`) — never fake data dressed up as real. `SPEC.md` is the
+  sitemap and status-per-route.
+- **Rate limiting is in-memory, not a durable store, and that's a stated tradeoff, not an
+  oversight.** See [Production hygiene](#production-hygiene-fe-14) — the honest version of this
+  decision, including what a harder requirement would need instead.
+- **Git history wasn't rewritten.** FE-14 asked to "clean git history if needed." The full log
+  is Conventional-Commits-compliant throughout except one early `Update README.md` commit (from
+  before `CLAUDE.md`'s conventions existed) — one cosmetic exception isn't worth rewriting
+  history that's already been pulled into multiple merged branches and PRs, which carries real
+  risk (force-push, diverged forks) for no real benefit. No secrets were ever committed (checked
+  the full history, not just the current tree).
+- **Agent chat has no persistence.** Refreshing loses the conversation — consistent with the
+  "no real backend" posture everywhere else, not an oversight specific to chat.
+
+## Production hygiene (FE-14)
+
+The chat route (`/api/agents/[id]/chat`) is the one place in this app that costs real money per
+request, so it's the one place hardened against trivial abuse:
+
+- **Rate limiting** — `src/lib/rate-limit.ts`, a sliding-window limiter (10 requests/minute per
+  IP by default, `CHAT_RATE_LIMIT` in `src/lib/ai/config.ts`) checked *before* the request body
+  is even parsed, so an over-limit request is rejected for free. **Stated limitation:** it's an
+  in-memory `Map`, so the count is per server instance, not global — on Vercel's serverless
+  runtime, a burst spread across multiple warm instances (or a cold start) resets or fragments
+  the count. That's enough to stop a casual script, not a determined attacker running many
+  concurrent connections. The real fix for that bar is swapping this module's internals for
+  Vercel KV or Upstash Redis (same call signature, different storage) — a bigger infrastructure
+  decision than this task's scope, so it's documented here rather than built speculatively.
+- **Input caps** — `src/lib/ai/validate-chat-request.ts`. `maxOutputTokens: 1024` already capped
+  the *output* side; nothing capped *input* until now. A request is rejected (400, before any
+  model call) if it has more than 40 messages, any single message exceeds 4,000 characters, or
+  the conversation's combined text exceeds 20,000 characters.
+- **`maxDuration = 30`** on the chat route (already present since FE-06) — streaming can
+  legitimately run longer than a typical request; this raises Vercel's default function timeout
+  so a long generation isn't cut off mid-stream. `/api/health` needs no such override — it does
+  no external work and returns in milliseconds.
+- **No secrets reach the client.** `ANTHROPIC_API_KEY` is read only in `src/lib/ai/config.ts`,
+  server-side, by the AI SDK's provider — verified by grepping for the string outside that one
+  file and confirming `NEXT_PUBLIC_`-prefixed vars are the only ones that cross to the browser.
+
+All three are unit-tested in `route.test.ts` and `rate-limit.test.ts` — see the rate-limit tests
+for separate-IP isolation and window-sliding behavior specifically, not just "it returns 429."
+
+## Cross-browser verification
+
+Done: a full desktop + mobile-viewport pass against a real production build (`next build` +
+`next start`) in Chromium (the browser engine this sandbox can actually reach — see below),
+covering every route above, zero console/page errors, zero horizontal overflow at a 390px mobile
+viewport, the chat textarea confirmed at a 16px computed font size (under 16px is what makes iOS
+Safari auto-zoom on focus), and the reduced-motion path confirmed to render zero `<canvas>`
+elements on both WebGL routes. A static code-level compatibility pass also checked for
+Safari/Firefox-risk features (`:has()`, container queries, `backdrop-filter`, unprefixed
+`-webkit-` needs) — none are used; the one non-trivial feature in play, `dvh` viewport units, is
+supported in Safari 15.4+ and current Firefox/Chrome, i.e. anything from roughly 2022 onward.
+
+**Not done, and said plainly rather than silently skipped:** this sandbox can only reach a
+pre-installed Chromium — `npx playwright install firefox webkit` 403s against every mirror the
+network policy allows. Real Firefox, real desktop Safari, and real mobile Safari were not
+verified by the AI in this pass; the brief's "cross-browser pass (Chrome, Firefox, Safari,
+mobile Safari)" needs a human with those actual browsers (or BrowserStack/similar) to
+spot-check, which this task hands off rather than claiming falsely. Given the compatibility
+review above and that every animated feature already degrades to static CSS behind real feature
+detection (not a UA sniff), the risk surface for that manual pass is small, but it's still an
+open item, not a verified one.
+
+## How AI tools built this
+
+This repo was built task-by-task across 14 assignments, almost entirely through an interactive
+Claude Code session — not a one-shot generation, and not uniformly "AI wrote it, human approved
+it" either. Two different working modes were used on purpose, and both are visible in the repo:
+
+**Most tasks (FE-04 onward, including this one):** an ongoing back-and-forth session — research
+the existing code, implement, verify by actually running lint/tests/build/E2E (not just writing
+them), document, commit, open a PR, and confirm CI is actually green before calling anything
+done. "Verify by running it" was a repeated, hard-learned lesson, not an assumption:
+
+- **FE-12 → FE-13 regression, caught by checking CI instead of assuming a merge was clean.**
+  Merging FE-12's PR broke two E2E tests on `main` — the new `aria-live` announcement region
+  duplicated visible chat text, so `page.getByText(...)` matched two elements. Found by actually
+  opening the merged PR's Checks tab (not assumed from "the PR merged"), fixed by scoping the
+  locators, verified with a real `npx playwright test` run, then a second PR to fix it.
+- **A syntax bug a human would catch instantly, an AI session caught by actually compiling.**
+  `shader-hero-shader.ts` had a stray backtick inside a GLSL comment that silently closed the
+  enclosing JS template literal — `npx tsc --noEmit` caught it immediately; it would not have
+  been obvious from reading the diff alone.
+- **A Playwright test passed locally against the wrong assumption.** The first retry E2E test
+  asserted a bare `getByRole("alert")` and failed strict-mode with "resolved to 2 elements" —
+  Next.js's own route-change announcer also carries `role="alert"`. Caught only by running the
+  suite, not by reading the test.
+- **A layout bug only visible via measurement, not a visual read.** Agent Core's fallback
+  collapsed to a 0×0 box in one specific flex/aspect-ratio nesting case — caught by actually
+  checking `getBoundingClientRect()` in a real browser, not by eyeballing a screenshot.
+- **Contrast and performance numbers are computed, not eyeballed or guessed.** The `/about`
+  scrim opacity was chosen by a Python script computing exact WCAG contrast ratios against the
+  shader's worst-case brightness across four candidate opacities; the FE-11/FE-13 bundle-sharing
+  claim in this README's appendix was confirmed by grepping the actual built
+  `react-loadable-manifest.json`, not asserted from how Next.js *should* behave.
+- **This README's own limitation, stated above:** the cross-browser pass above only verifies
+  Chromium because this sandbox's network policy blocks Firefox/WebKit's download mirrors —
+  included here as another example of reporting what wasn't verified rather than implying it
+  was.
+
+**FE-03 (the account app) used a different, more formal mode on purpose:** two fully scripted,
+independent prompts sent to isolated subagents (each starting with zero memory of the other),
+specifically to produce a clean before/after record of what AI-assisted work actually looks
+like. The full prompt text is in [`PROMPTS.md`](./PROMPTS.md); the AI-vs-manual breakdown,
+including three concrete fixes made *after* reading the generated diffs (not before) — a missing
+`<dl>`/`<dt>`/`<dd>` semantic-HTML fix an automated test suite would never have caught, a guard
+against blank activity-log entries that the AI itself flagged as a risk but didn't resolve, and
+all cross-feature wiring written by hand rather than prompted — is in
+[`AI-ASSISTANCE.md`](./AI-ASSISTANCE.md).
+
+**FE-02's drill** (`WORKFLOW.md`) is the other formal comparison: the same settings form built
+twice, once from a vague prompt and once from a precise one. The vague version shipped a form
+with `noValidate` and no validation resolver wired to it — silently accepting an empty name and
+a malformed email with zero errors shown, which is worse than not adding `noValidate` at all.
+That specific failure mode is now a standing review rule in `CLAUDE.md`.
+
+**Net effect, stated honestly:** AI did the large majority of the typing across this repo, under
+continuous direction — every task above started from an explicit brief, not an open-ended "build
+something." Every generated change went through `lint`/typecheck/`test:run`/`build` (and, from
+FE-10 onward, a real E2E pass) before being called done, and several of the bugs listed above
+were caught by that verification step actually running, not by a human reading a diff carefully
+enough to spot them first. That's the real claim this section is making — not "AI built a
+flawless app," but "here's exactly where it went wrong, and exactly how each one was caught."
+
+## Promoting to production
+
+Checklist for taking this from a Preview deployment to a real Production URL (Vercel):
+
+1. **Environment variables** — in Vercel, Project Settings → Environment Variables, add
+   `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL_ID`) scoped to **Production** (and
+   **Preview**, if preview deployments should also get real replies). The key itself has to be
+   entered by a human with access to it — it's a secret, never something to paste into a tool or
+   commit anywhere.
+2. **Promote** — merge the latest PR into `main`; if the Vercel GitHub integration is set to
+   auto-deploy `main` to Production, that's it. Otherwise, Vercel dashboard → Deployments → pick
+   the `main` build → **Promote to Production**.
+3. **Custom domain (optional)** — Vercel dashboard → Project Settings → Domains → add a domain
+   you own, follow its DNS instructions (usually a CNAME or A record at your registrar).
+4. **Cross-browser spot-check** — the automated pass above only covers Chromium (see
+   [Cross-browser verification](#cross-browser-verification) for why); open the Production URL
+   in real Firefox, real Safari, and real mobile Safari and confirm the chat flow, the Dashboard
+   hero, and the `/about` shader all render and the page doesn't horizontally scroll on a phone.
+5. **Submit Checkpoint 2** — the Production URL plus this README.
+
+## Testing & CI
+
+Two layers, each covering what it's actually good at — full depth, including what each test
+caught and why, is in the [Engineering deep-dives](#engineering-deep-dives) appendix below.
+
+**Component tests (Vitest + Testing Library):** `npm run test:run` — 157 tests across 26 files,
+every query through `getByRole`/`getByLabelText`/`getByText`, never a test id.
+
+**One end-to-end test (Playwright), the real primary flow:** `npm run test:e2e` — a real
+Chromium browser against a real `next dev` server; only the Anthropic network call itself is
+faked, by speaking its exact wire protocol (`page.route()`), not by shortcutting the UI layer.
+
+**CI (`.github/workflows/ci.yml`):** on every push to `main` and every PR — `npm ci` → lint →
+Vitest → `next build` → Playwright. All green is required to merge.
+
+---
+
+## Engineering deep-dives
+
+The sections below are the full technical write-up for each feature — uniform contracts,
+failure-mode inventories, perf numbers, and "caught by actually running it" notes — kept for
+anyone (a mentor, a future contributor) who wants the detail the summary above intentionally
+leaves out.
+
+### Tool contract (FE-07)
 
 The Incident Summarizer agent (`/agents/incident-summarizer`) can call one server-side tool.
 Defined in [`src/lib/ai/tools.ts`](./src/lib/ai/tools.ts), wired into that agent only via
 `AGENT_TOOLS` in [`src/lib/ai/config.ts`](./src/lib/ai/config.ts).
 
-### `scoreIncidentSeverity`
+#### `scoreIncidentSeverity`
 
 Computes an objective, deterministic SEV1–SEV4 severity score from a few facts about an
 incident's impact — the model reports what happened, the tool (not the model) decides how bad
@@ -99,7 +346,7 @@ distinct visual per state — the first two show the input filling in inside a p
 `IncidentSeverityCard` component (badge + score bar + factor breakdown + recommendation, not
 a JSON dump), and `output-error` renders a red error card with the specific message above.
 
-## Resilience & failure states (FE-08)
+### Resilience & failure states (FE-08)
 
 Inventory of the primary flow's (`/agents/[id]`'s streaming chat) expected and unexpected
 failure modes, and how each is handled:
@@ -109,13 +356,15 @@ failure modes, and how each is handled:
 | Mid-stream failure (model overloaded, rate-limited, connection drops after streaming starts) | The route's `onError` surfaces a designed message; the chat shows a red error card with that message and a **Retry** button that calls `regenerate()` — resending only the failed turn, not the whole conversation (`src/app/agents/[id]/agent-chat.tsx`). |
 | Pre-stream failure (missing/invalid API key, a provider error before any chunk streams) | The route's top-level `catch` returns `{ error }` JSON with the right status. `HttpChatTransport` doesn't parse that JSON for you — its `.message` is the raw response *text* — so `describeChatError` (`src/lib/ai/chat-error.ts`) unwraps the `error` field instead of showing the literal `{"error":"..."}` string. |
 | Rate limit / provider overload | `describeProviderError` (`src/lib/ai/server-error.ts`) recognizes an `APICallError` with status 429/503/529 and returns actionable copy ("wait a moment and try again") instead of raw provider text — used from both the pre-stream `catch` and the mid-stream `onError`, so the two paths agree. |
+| Too many requests from one IP (FE-14) | `checkRateLimit` (`src/lib/rate-limit.ts`) returns 429 with a `Retry-After` header before the body is even parsed — see [Production hygiene](#production-hygiene-fe-14). |
+| Oversized request — too many messages or too much text (FE-14) | `validateChatRequest` (`src/lib/ai/validate-chat-request.ts`) returns 400 with a specific "what limit, what value" message before any model call. |
 | Network failure before send | `useOnlineStatus` (`src/lib/use-online-status.ts`, built on `useSyncExternalStore`) shows a banner and disables Send/the textarea the moment the browser goes offline, instead of waiting for a fetch to fail first. |
 | Empty / whitespace-only input | Unchanged from FE-06 — Send stays disabled. |
 | First-run / no conversation yet | Each agent now ships two realistic `examplePrompts` (`src/lib/ai/config.ts`); the empty state renders them as click-to-fill chips instead of a bare sentence. |
 | Unknown agent (e.g. `/agents/does-not-exist`) | `agents/[id]/not-found.tsx` explains why and links back to `/agents`, instead of Next's generic 404. |
 | Uncaught render error | `app/error.tsx` (app-wide) and the more specific `agents/[id]/error.tsx` both offer **Try again** (Next's `retry()`) and a way back; `app/global-error.tsx` covers a crash in the root layout itself, with its own inline styles since it replaces the whole document. |
 | Slow response | FE-06's thinking-dots indicator, plus new `loading.tsx` skeletons on `/agents` and `/agents/[id]` sized to the real layout so there's no shift when content swaps in. |
-| Mobile Safari | The chat textarea is `text-base` (16px) at every breakpoint — under 16px, iOS Safari auto-zooms the page on focus, which on a chat screen means every send yanks the viewport in and out. Verified at 375×667 with zero horizontal overflow in both the empty and error states. |
+| Mobile Safari | The chat textarea is `text-base` (16px) at every breakpoint — under 16px, iOS Safari auto-zooms the page on focus, which on a chat screen means every send yanks the viewport in and out. Verified at 375×667 (and again at 390px in FE-14's production-build pass) with zero horizontal overflow in both the empty and error states. |
 
 All of the above were exercised live against the dev server with Playwright — intercepting
 the chat route to simulate each failure rather than depending on the real provider — not just
@@ -126,11 +375,9 @@ page errors across all of them; the only console output was the browser's own ne
 logging of the intentionally-sabotaged non-2xx responses, which is unavoidable for any failed
 request and not specific to this app.
 
-## Testing & CI (FE-10)
+### Testing & CI, full detail (FE-10)
 
-Two layers, each covering what it's actually good at:
-
-**Component tests (Vitest + React Testing Library).** `npm run test:run` — 20 files, 111+
+**Component tests (Vitest + React Testing Library).** `npm run test:run` — 26 files, 157
 tests. Every query goes through `getByRole`/`getByLabelText`/`getByText`, never a test id, so
 a CSS-class rename can't break a test (an accessible-name/role change is a real UI regression,
 which should break one). Highest-risk coverage: `agent-chat.test.tsx` drives the chat
@@ -141,7 +388,9 @@ route, and the real Anthropic API behind it, are never reached by this layer.
 `settings-form.test.tsx` covers the one `react-hook-form` + `zod` validated form (required
 field, email format, successful submit + persistence, reset). `tool-parts.test.tsx` covers the
 one tool-result component across all four states the AI SDK emits for a tool call
-(`input-streaming`, `input-available`, `output-available`, `output-error`).
+(`input-streaming`, `input-available`, `output-available`, `output-error`). `rate-limit.test.ts`
+and `route.test.ts`'s "rate limiting"/"input caps" blocks (FE-14) cover the sliding window,
+per-IP isolation, and both new 400/429 paths.
 
 **One end-to-end test (Playwright), the real primary flow.** `npm run test:e2e` —
 `e2e/agent-chat.spec.ts` drives a real Chromium browser against a real `next dev` server:
@@ -169,7 +418,7 @@ the suite to pass; the Playwright HTML report uploads as a build artifact either
 so an un-mocked route that slipped through review would fail loudly on an obviously-fake key
 instead of silently calling production Anthropic.
 
-## Agent Core — a reactive 3D hero (FE-11)
+### Agent Core — a reactive 3D hero (FE-11)
 
 What it is: a small [React Three Fiber](https://r3f.docs.pmnd.rs/) scene on the Dashboard
 (`/`) standing in for the console's own AI subsystem rather than a generic demo object. A
@@ -234,7 +483,7 @@ never touch the panel; and `@react-three/postprocessing`'s bloom on the core's h
 closer match to the "glowing" fallback gradient (skipped here to keep the perf budget simple —
 one mesh, no render-target passes).
 
-## Shader hero — a custom aurora fragment shader (FE-13)
+### Shader hero — a custom aurora fragment shader (FE-13)
 
 What it is: a fullscreen custom GLSL fragment shader on a new `/about` page (`ShaderHero` →
 `about/page.tsx`), not a remix left mostly as-is — it's a from-scratch domain-warped flow
@@ -294,7 +543,7 @@ same `next/dynamic(..., { ssr: false })` + safe-default-during-SSR pattern FE-11
 reused here, not reinvented.
 
 **Contrast.** The headline sits over a `black/65 → black/20 → transparent` CSS scrim, chosen
-by computing WCAG contrast ratios numerically (not eyeballed) for white text against every one
+by computing WCAG contrast ratios numerically (not eyeballed) for white text over every one
 of the shader's four palette colors plus a synthetic near-white grain spike, across four
 candidate scrim opacities — `black/65` clears AA's 4.5:1 floor with comfortable margin in the
 worst case (7.78:1, up to 19:1 depending on the underlying color). The shader's own vignette
