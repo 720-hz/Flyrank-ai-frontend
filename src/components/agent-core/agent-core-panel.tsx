@@ -49,7 +49,12 @@ export function AgentCorePanel({
             <label
               key={option}
               htmlFor={`core-state-${option}`}
-              className="flex-1 cursor-pointer rounded-md border border-main/15 px-2 py-1.5 text-center text-xs font-medium text-text/80 transition-colors has-checked:border-main has-checked:bg-main has-checked:text-background"
+              // has-[:focus-visible]: this label's radio input is sr-only, so the browser's
+              // native focus ring (which SettingsForm's theme-preference radios get for free,
+              // being plain visible inputs) lands on a 1px invisible element — silent for a
+              // keyboard user. Forwarding focus-visible to the visible label is what makes tab
+              // order followable here at all (caught in the FE-12 keyboard-only pass).
+              className="flex-1 cursor-pointer rounded-md border border-main/15 px-2 py-1.5 text-center text-xs font-medium text-text/80 transition-colors has-checked:border-main has-checked:bg-main has-checked:text-background has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-main"
             >
               <input
                 id={`core-state-${option}`}
@@ -73,7 +78,8 @@ export function AgentCorePanel({
             <label
               key={option}
               htmlFor={`core-shape-${option}`}
-              className="flex-1 cursor-pointer rounded-md border border-main/15 px-2 py-1.5 text-center text-xs font-medium text-text/80 transition-colors has-checked:border-main has-checked:bg-main has-checked:text-background"
+              // has-[:focus-visible]: see the matching comment on the Agent state radios above.
+              className="flex-1 cursor-pointer rounded-md border border-main/15 px-2 py-1.5 text-center text-xs font-medium text-text/80 transition-colors has-checked:border-main has-checked:bg-main has-checked:text-background has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-main"
             >
               <input
                 id={`core-shape-${option}`}
@@ -94,7 +100,13 @@ export function AgentCorePanel({
         <legend className="text-sm font-medium text-text">Core color</legend>
         <div className="flex gap-3">
           {COLOR_PRESETS.map((preset) => (
-            <label key={preset.value} htmlFor={`core-color-${preset.value}`} className="cursor-pointer">
+            <label
+              key={preset.value}
+              htmlFor={`core-color-${preset.value}`}
+              // has-[:focus-visible]: see the comment on the Agent state radios above — same
+              // sr-only-input-plus-styled-sibling pattern, same fix.
+              className="cursor-pointer rounded-full has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-main"
+            >
               <input
                 id={`core-color-${preset.value}`}
                 type="radio"

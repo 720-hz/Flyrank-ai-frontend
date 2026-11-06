@@ -96,7 +96,8 @@ function IncidentInputPreview({
     <dl key={JSON.stringify(input)} className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs animate-in fade-in duration-200">
       {rows.map(([label, value]) => (
         <div key={label} className="contents">
-          <dt className="text-text/50">{label}</dt>
+          {/* /65, not /50 — see src/app/page.tsx's comment on this contrast fix (FE-12 audit). */}
+          <dt className="text-text/65">{label}</dt>
           <dd className="truncate text-text/80">{value}</dd>
         </div>
       ))}
@@ -171,7 +172,7 @@ export function IncidentSeverityCard({
     >
       <div className="flex items-center justify-between gap-2">
         <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${level.badge}`}>{output.level}</span>
-        <span className="text-xs text-text/50">{output.score}/100</span>
+        <span className="text-xs text-text/65">{output.score}/100</span>
       </div>
 
       {input.impactSummary && <p className="mt-2 text-sm text-text">{input.impactSummary}</p>}
@@ -187,7 +188,7 @@ export function IncidentSeverityCard({
         {output.factors.map((factor) => (
           <li key={factor.label} className="flex items-baseline justify-between gap-2 text-xs">
             <span className="text-text/60">
-              {factor.label} <span className="text-text/40">— {factor.detail}</span>
+              {factor.label} <span className="text-text/65">— {factor.detail}</span>
             </span>
             <span className="shrink-0 font-medium text-text/70">+{factor.points}</span>
           </li>

@@ -45,6 +45,24 @@ export function AgentChat({ agentId, agentName, examplePrompts }: AgentChatProps
 
   const isBusy = status === "submitted" || status === "streaming";
 
+  // Screen-reader announcement for the reply that just finished streaming (FE-12: "streamed
+  // output announced politely"). Derived during render, not an effect+setState — only has
+  // content once a turn is fully `ready`, so it's empty (silent, not a re-announce) for the
+  // whole submitted/streaming span of the *next* turn until that one finishes too.
+  //
+  // Deliberately NOT a live region wrapping the visible bubble: Streamdown replaces that node's
+  // text on every chunk, and aria-live re-announces a changed text node's full current content
+  // on each mutation — a live visible bubble would have a screen reader re-reading the message
+  // from the top dozens of times a second while it streams. This fires once, on completion,
+  // with the full text — "polite" in the literal ARIA sense (queued, doesn't interrupt) and in
+  // the practical one.
+  const announcedReply = useMemo(() => {
+    if (status !== "ready") return "";
+    const last = messages[messages.length - 1];
+    if (last?.role !== "assistant") return "";
+    return getMessageText(last);
+  }, [status, messages]);
+
   // Guards the narrow window between a click and `regenerate()` actually
   // flipping `status` away from "error" (which itself then hides this whole
   // button), so mashing Retry can't fire a second request.
@@ -132,6 +150,11 @@ export function AgentChat({ agentId, agentName, examplePrompts }: AgentChatProps
 
   return (
     <div className="flex h-[min(70dvh,640px)] min-h-[420px] flex-col rounded-lg border border-main/10 bg-background">
+      {/* Visually hidden — see the announcedReply effect above for why this isn't on the
+          visible message bubble itself. */}
+      <div aria-live="polite" data-testid="announced-reply" className="sr-only">
+        {announcedReply}
+      </div>
       <div
         ref={scrollRef}
         onScroll={handleScroll}

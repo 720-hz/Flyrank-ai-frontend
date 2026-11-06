@@ -120,6 +120,24 @@ describe("AgentChat", () => {
     expect(screen.getByTestId("streamdown")).toHaveTextContent("Looks good");
   });
 
+  it("announces the completed reply to screen readers once the turn is ready", () => {
+    mockChat({
+      messages: [textMessage("u1", "user", "hi"), textMessage("a1", "assistant", "Looks good to me")],
+      status: "ready",
+    });
+    renderAgentChat();
+    expect(screen.getByTestId("announced-reply")).toHaveTextContent("Looks good to me");
+  });
+
+  it("does not announce the in-progress reply while still streaming (FE-12: avoid re-reading the live region on every chunk)", () => {
+    mockChat({
+      messages: [textMessage("u1", "user", "hi"), textMessage("a1", "assistant", "partial a")],
+      status: "streaming",
+    });
+    renderAgentChat();
+    expect(screen.getByTestId("announced-reply")).toHaveTextContent("");
+  });
+
   it("renders user messages as plain text, not through the markdown renderer", () => {
     mockChat({ messages: [textMessage("u1", "user", "**not markdown**")], status: "ready" });
     renderAgentChat();
