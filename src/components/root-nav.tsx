@@ -9,6 +9,7 @@ const NAV_LINKS = [
   { href: "/runs", label: "Runs" },
   { href: "/health", label: "Health" },
   { href: "/account", label: "Account" },
+  { href: "/about", label: "About" },
 ] as const;
 
 function isLinkActive(pathname: string, href: string): boolean {
