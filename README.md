@@ -125,3 +125,46 @@ unknown-agent 404, and the mobile viewport in both the empty and error states. Z
 page errors across all of them; the only console output was the browser's own network-level
 logging of the intentionally-sabotaged non-2xx responses, which is unavoidable for any failed
 request and not specific to this app.
+
+## Testing & CI (FE-10)
+
+Two layers, each covering what it's actually good at:
+
+**Component tests (Vitest + React Testing Library).** `npm run test:run` — 20 files, 111+
+tests. Every query goes through `getByRole`/`getByLabelText`/`getByText`, never a test id, so
+a CSS-class rename can't break a test (an accessible-name/role change is a real UI regression,
+which should break one). Highest-risk coverage: `agent-chat.test.tsx` drives the chat
+component through pending (`status: "submitted"`), streaming (including the hand-off from the
+thinking indicator to partial text), and error (both a plain error and a mid-stream-failure
+retry card) by mocking `@ai-sdk/react`'s `useChat` directly — the real `/api/agents/[id]/chat`
+route, and the real Anthropic API behind it, are never reached by this layer.
+`settings-form.test.tsx` covers the one `react-hook-form` + `zod` validated form (required
+field, email format, successful submit + persistence, reset). `tool-parts.test.tsx` covers the
+one tool-result component across all four states the AI SDK emits for a tool call
+(`input-streaming`, `input-available`, `output-available`, `output-error`).
+
+**One end-to-end test (Playwright), the real primary flow.** `npm run test:e2e` —
+`e2e/agent-chat.spec.ts` drives a real Chromium browser against a real `next dev` server:
+Dashboard → **Agents** nav link → into PR Reviewer → type a message → Send → the streamed
+reply renders; a second case covers a failed turn → error card → **Retry** → a working
+response succeeds. The one thing this suite can't let through to the real world — the chat
+route's call to Anthropic — is intercepted at the network boundary with `page.route()`
+(`e2e/mock-ui-message-stream.ts`), which hand-builds a real AI SDK `UIMessageChunk` SSE
+response (and a real JSON error body, for the failure case). That's the browser's actual
+fetch getting a fake server response, not a mocked module — so routing, the nav, scroll pinning,
+and disabled/focus states are all exercised for real; only the Anthropic call itself is faked,
+and it's faked by speaking its exact wire protocol rather than shortcutting the UI layer.
+
+**Caught by actually running the suite, not just writing it:** the first version of the retry
+E2E test asserted on a bare `getByRole("alert")` and failed with a strict-mode "resolved to 2
+elements" error — Next.js's own route-change announcer (`#__next-route-announcer__`) also
+carries `role="alert"`. Fixed by scoping the locator with `.filter({ hasText: ... })` to the
+app's own error card specifically. Left in `e2e/agent-chat.spec.ts`'s comments as a reminder
+that `role="alert"` isn't unique to app code on a Next.js page.
+
+**CI (`.github/workflows/ci.yml`).** On every push to `main` and every PR: `npm ci` → lint →
+Vitest → `next build` → install Playwright's Chromium → Playwright. All green is required for
+the suite to pass; the Playwright HTML report uploads as a build artifact either way. No
+`ANTHROPIC_API_KEY` is required anywhere in this pipeline — a placeholder value is set purely
+so an un-mocked route that slipped through review would fail loudly on an obviously-fake key
+instead of silently calling production Anthropic.
