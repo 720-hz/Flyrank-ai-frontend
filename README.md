@@ -7,7 +7,7 @@ Development with AI" internship track, with [Claude Code](https://code.claude.co
 of the implementation under direction and review at every step — see
 ["How AI tools built this"](#how-ai-tools-built-this) below for specifics, not a marketing line.
 
-**Live:** `<!-- production URL goes here once promoted — see "Promoting to production" below -->`
+**Live:** [flyrank-ai-frontend.vercel.app](https://flyrank-ai-frontend.vercel.app)
 
 ## Screenshots
 
