@@ -138,6 +138,40 @@ static CSS gradient — one pattern, established once in FE-11, reused exactly i
 - **Agent chat has no persistence.** Refreshing loses the conversation — consistent with the
   "no real backend" posture everywhere else, not an oversight specific to chat.
 
+## Known limitations & future improvements
+
+Stated plainly rather than left for a reader to discover:
+
+- **Dashboard (`/`) and Runs (`/runs`, `/runs/[id]`) are routed but not wired to real data.**
+  Both are intentional, spec'd placeholders (see `SPEC.md`), not unfinished work that slipped
+  through — but they're still the two biggest gaps between this app and a real internal tool.
+  The natural next step for Runs specifically: log each agent conversation as a Run, which would
+  also give Agent Core's Dashboard hero something real to react to instead of a manual panel.
+- **No persistence anywhere.** Chat history, account settings, and activity log all live in
+  memory or `localStorage` — refresh the tab or switch devices and it's gone. A real version of
+  this app needs an actual backend/database behind all three.
+- **Rate limiting is in-memory, not durable.** Fine for a capstone demo, not for real abuse
+  resistance — see [Production hygiene](#production-hygiene-fe-14) for the specific failure mode
+  and the Vercel KV/Upstash Redis upgrade path already scoped out.
+- **Cross-browser verification is Chromium-only, automated.** Real Firefox, desktop Safari, and
+  mobile Safari were never driven by a real engine in this project — only reasoned about via a
+  static compatibility pass (see [Cross-browser verification](#cross-browser-verification)) and
+  left as an explicit manual TODO. This is the one item in the whole project that's asserted,
+  not verified.
+- **No custom domain.** Running on the default `*.vercel.app` domain; optional per the brief, not
+  pursued since there's no real audience yet that would benefit from one.
+- **Agent Core doesn't reflect real chat state yet.** Its Idle/Thinking/Speaking states are
+  driven by a manual control panel, not by `/agents/[id]`'s actual `status`. Wiring those
+  together is the most visible remaining "this doesn't quite connect" gap in the app.
+- **Unit-test coverage is uneven by design, not by accident.** `npm run test:coverage` (FE-14
+  addition) shows ~60% statement/line coverage, 88.7% branch, 85.2% function — comfortably over
+  the 50% bar, but concentrated in logic-heavy files (hooks, `lib/`, forms, chat) deliberately
+  rather than spread evenly. Thin Server Component page wrappers and the two WebGL scene files
+  (`agent-core-scene.tsx`, `shader-hero-scene.tsx`) are at 0% unit coverage — those are exercised
+  by the Playwright E2E flow and by the manual Lighthouse/WAVE/keyboard passes in `AUDIT.md`
+  instead, since testing Three.js render output through jsdom would be low-value theater compared
+  to testing it by actually running it in a browser.
+
 ## Production hygiene (FE-14)
 
 The chat route (`/api/agents/[id]/chat`) is the one place in this app that costs real money per
@@ -278,12 +312,24 @@ caught and why, is in the [Engineering deep-dives](#engineering-deep-dives) appe
 **Component tests (Vitest + Testing Library):** `npm run test:run` — 157 tests across 26 files,
 every query through `getByRole`/`getByLabelText`/`getByText`, never a test id.
 
+**Coverage:** `npm run test:coverage` (FE-14 addition) — ~60% statement/line coverage, 88.7%
+branch, 85.2% function, well over this project's 50% bar. Raw output committed at
+`audit/coverage-output.txt`; see [Known limitations](#known-limitations--future-improvements)
+for why it's concentrated in logic-heavy files rather than spread evenly across every file.
+
 **One end-to-end test (Playwright), the real primary flow:** `npm run test:e2e` — a real
 Chromium browser against a real `next dev` server; only the Anthropic network call itself is
 faked, by speaking its exact wire protocol (`page.route()`), not by shortcutting the UI layer.
 
 **CI (`.github/workflows/ci.yml`):** on every push to `main` and every PR — `npm ci` → lint →
 Vitest → `next build` → Playwright. All green is required to merge.
+
+**Accessibility & performance audit:** real Lighthouse-mobile and WAVE runs against a pushed
+deployment, before/after a fix pass — full methodology, numbers, and screenshots in
+[`AUDIT.md`](./AUDIT.md). Headline result: Dashboard Performance 91→97, Accessibility 96→100;
+the other three audited pages were already 100/100; zero WAVE errors throughout; one real
+keyboard-accessibility bug found and fixed (Agent Core's custom radio controls had no visible
+focus indicator).
 
 ---
 
